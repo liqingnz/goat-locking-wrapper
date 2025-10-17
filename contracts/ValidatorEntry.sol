@@ -131,10 +131,30 @@ contract ValidatorEntry {
     function delegate(
         address validator,
         ILocking.Locking[] calldata values
-    ) external {
+    ) external payable {
         ValidatorInfo storage info = validators[validator];
         require(msg.sender == info.funder, "Not the funder");
-        underlying.lock(validator, values);
+        for (uint i = 0; i < values.length; i++) {
+            if (values[i].token == address(0)) {
+                continue; // skip native token
+            }
+            require(
+                IERC20(values[i].token).transferFrom(
+                    msg.sender,
+                    address(this),
+                    values[i].amount
+                ),
+                "Token transfer failed"
+            );
+            require(
+                IERC20(values[i].token).approve(
+                    address(underlying),
+                    values[i].amount
+                ),
+                "Token approve failed"
+            );
+        }
+        underlying.lock{value: msg.value}(validator, values);
     }
 
     function undelegate(
