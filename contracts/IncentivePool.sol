@@ -28,6 +28,7 @@ contract IncentivePool is Ownable, IIncentivePool {
 
     function distributeReward(
         uint256 commissionRate,
+        uint256 goatCommissionRate,
         address rewardPayee
     ) external override onlyOwner {
         require(
@@ -66,7 +67,7 @@ contract IncentivePool is Ownable, IIncentivePool {
             uint256 tokenRemain = rewardToken.balanceOf(address(this)) -
                 commissions[address(rewardToken)];
             if (tokenRemain > 0) {
-                uint256 tokenCommission = (tokenRemain * commissionRate) /
+                uint256 tokenCommission = (tokenRemain * goatCommissionRate) /
                     MAX_COMMISSION_RATE;
                 commissions[address(rewardToken)] += tokenCommission;
 
