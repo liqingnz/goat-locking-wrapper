@@ -13,4 +13,6 @@ interface IIncentivePool {
     ) external;
 
     function withdrawCommissions(address owner, address to) external;
+
+    function reassignCommission(address from, address to) external;
 }

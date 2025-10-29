@@ -32,6 +32,13 @@ contract IncentivePool is Ownable, IIncentivePool {
         uint256 amount
     );
 
+    event CommissionReassigned(
+        address from,
+        address to,
+        uint256 nativeAmount,
+        uint256 tokenAmount
+    );
+
     constructor(IERC20 _rewardToken) Ownable(msg.sender) {
         rewardToken = _rewardToken;
     }
@@ -44,7 +51,7 @@ contract IncentivePool is Ownable, IIncentivePool {
         uint256 foundationGoatRate,
         uint256 operatorNativeRate,
         uint256 operatorGoatRate
-    ) external override onlyOwner {
+    ) external onlyOwner {
         require(funderPayee != address(0), "Invalid funder payee");
         require(foundationPayee != address(0), "Invalid foundation payee");
         require(operatorPayee != address(0), "Invalid operator payee");
@@ -146,10 +153,7 @@ contract IncentivePool is Ownable, IIncentivePool {
         }
     }
 
-    function withdrawCommissions(
-        address owner,
-        address to
-    ) external override onlyOwner {
+    function withdrawCommissions(address owner, address to) external onlyOwner {
         require(owner != address(0), "Invalid owner");
         require(to != address(0), "Invalid address");
 
@@ -176,6 +180,30 @@ contract IncentivePool is Ownable, IIncentivePool {
                 address(rewardToken),
                 tokenAmount
             );
+        }
+    }
+
+    function reassignCommission(address from, address to) external onlyOwner {
+        require(from != address(0), "Invalid from");
+        require(to != address(0), "Invalid to");
+        if (from == to) {
+            return;
+        }
+
+        uint256 nativeAmount = nativeCommissions[from];
+        if (nativeAmount > 0) {
+            nativeCommissions[from] = 0;
+            nativeCommissions[to] += nativeAmount;
+        }
+
+        uint256 tokenAmount = tokenCommissions[from];
+        if (tokenAmount > 0) {
+            tokenCommissions[from] = 0;
+            tokenCommissions[to] += tokenAmount;
+        }
+
+        if (nativeAmount > 0 || tokenAmount > 0) {
+            emit CommissionReassigned(from, to, nativeAmount, tokenAmount);
         }
     }
 }

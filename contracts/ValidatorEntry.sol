@@ -37,6 +37,7 @@ contract ValidatorEntry is Ownable {
         address funderPayee; // the address who receives the rewards in the incentive pool
         address funder; // the address who funded the validator locking
         address operator; // the address who operates the validator and receives commissions
+        uint256 index; // position in validator list
     }
 
     address public foundationPayee;
@@ -45,6 +46,8 @@ contract ValidatorEntry is Ownable {
     uint256 public foundationGoatCommissionRate;
     uint256 public operatorGoatCommissionRate;
 
+    address[] private validatorList;
+
     constructor(ILocking _underlying, IERC20 _rewardToken) Ownable(msg.sender) {
         underlying = _underlying;
         rewardToken = _rewardToken;
@@ -52,6 +55,19 @@ contract ValidatorEntry is Ownable {
 
     function setFoundationPayee(address newFoundationPayee) external onlyOwner {
         require(newFoundationPayee != address(0), "Invalid foundation address");
+        address oldPayee = foundationPayee;
+        require(oldPayee != newFoundationPayee, "Foundation unchanged");
+
+        for (uint256 i = 0; i < validatorList.length; i++) {
+            address validator = validatorList[i];
+            address pool = validators[validator].incentivePool;
+            if (pool != address(0)) {
+                IncentivePool(pool).reassignCommission(
+                    oldPayee,
+                    newFoundationPayee
+                );
+            }
+        }
         foundationPayee = newFoundationPayee;
         emit FoundationPayeeUpdated(newFoundationPayee);
     }
@@ -110,8 +126,10 @@ contract ValidatorEntry is Ownable {
             incentivePool: address(new IncentivePool(rewardToken)),
             funderPayee: funderPayee,
             funder: funder,
-            operator: operator
+            operator: operator,
+            index: validatorList.length
         });
+        validatorList.push(validator);
         emit ValidatorMigrated(
             validator,
             validators[validator].incentivePool,
@@ -142,6 +160,7 @@ contract ValidatorEntry is Ownable {
             info.operator
         );
         underlying.changeValidatorOwner(validator, newOwner);
+        _removeValidator(validator, info.index);
         delete validators[validator];
     }
 
@@ -160,6 +179,11 @@ contract ValidatorEntry is Ownable {
         require(info.incentivePool != address(0), "Not migrated");
         require(msg.sender == info.operator, "Not operator");
         require(operator != address(0), "Invalid operator address");
+        require(info.operator != operator, "Operator unchanged");
+        IncentivePool(info.incentivePool).reassignCommission(
+            info.operator,
+            operator
+        );
         info.operator = operator;
         emit ValidatorOperatorUpdated(validator, operator);
     }
@@ -248,5 +272,16 @@ contract ValidatorEntry is Ownable {
             operatorNativeCommissionRate,
             operatorGoatCommissionRate
         );
+    }
+
+    function _removeValidator(address validator, uint256 index) internal {
+        require(validatorList[index] == validator, "Index mismatch");
+        uint256 lastIndex = validatorList.length - 1;
+        if (index != lastIndex) {
+            address lastValidator = validatorList[lastIndex];
+            validatorList[index] = lastValidator;
+            validators[lastValidator].index = index;
+        }
+        validatorList.pop();
     }
 }
