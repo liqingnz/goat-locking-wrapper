@@ -68,14 +68,16 @@ contract ValidatorEntry is Ownable {
         address oldPayee = foundationPayee;
         require(oldPayee != newFoundationPayee, "Foundation unchanged");
 
-        for (uint256 i = 0; i < validatorList.length; i++) {
-            address validator = validatorList[i];
-            address pool = validators[validator].incentivePool;
-            if (pool != address(0)) {
-                IncentivePool(pool).reassignCommission(
-                    oldPayee,
-                    newFoundationPayee
-                );
+        if (oldPayee != address(0)) {
+            for (uint256 i = 0; i < validatorList.length; i++) {
+                address validator = validatorList[i];
+                address pool = validators[validator].incentivePool;
+                if (pool != address(0)) {
+                    IncentivePool(pool).reassignCommission(
+                        oldPayee,
+                        newFoundationPayee
+                    );
+                }
             }
         }
         foundationPayee = newFoundationPayee;
@@ -134,7 +136,7 @@ contract ValidatorEntry is Ownable {
         require(funder != address(0), "Invalid funder address");
         require(
             validatorList.length < MAX_VALIDATOR_COUNT,
-            "Exceeded max amount"
+            "Validator limit reached"
         );
         validators[validator] = ValidatorInfo({
             incentivePool: address(new IncentivePool(rewardToken)),
@@ -214,6 +216,17 @@ contract ValidatorEntry is Ownable {
             "Not commission owner"
         );
         IncentivePool(info.incentivePool).withdrawCommissions(msg.sender, to);
+    }
+
+    function withdrawFoundationCommissions(address to) external {
+        require(msg.sender == foundationPayee, "Not foundation");
+        require(to != address(0), "Invalid address");
+        for (uint256 i = 0; i < validatorList.length; i++) {
+            address pool = validators[validatorList[i]].incentivePool;
+            if (pool != address(0)) {
+                IncentivePool(pool).withdrawCommissions(foundationPayee, to);
+            }
+        }
     }
 
     // claim rewards for a validator from underlying staking contract and distribute them
