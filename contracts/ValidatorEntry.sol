@@ -61,6 +61,8 @@ contract ValidatorEntry is Ownable {
         foundationPayee = _foundationPayee;
     }
 
+    // set new foundation payee address
+    // Setting a new foundation payee address will transfers any unwithdrawn commission to the replacement
     function setFoundationPayee(address newFoundationPayee) external onlyOwner {
         require(newFoundationPayee != address(0), "Invalid foundation address");
         address oldPayee = foundationPayee;
@@ -186,6 +188,8 @@ contract ValidatorEntry is Ownable {
         emit ValidatorFunderPayeeUpdated(validator, funderPayee);
     }
 
+    // set new operator address
+    // rotating the operator still transfers any unwithdrawn commission to the replacement
     function setOperator(address validator, address operator) external {
         ValidatorInfo storage info = validators[validator];
         require(info.incentivePool != address(0), "Not migrated");
