@@ -45,7 +45,7 @@ contract IncentivePool is Ownable, IIncentivePool {
 
     function distributeReward(
         address funderPayee,
-        address foundationPayee,
+        address foundation,
         address operatorPayee,
         uint256 foundationNativeRate,
         uint256 foundationGoatRate,
@@ -53,7 +53,7 @@ contract IncentivePool is Ownable, IIncentivePool {
         uint256 operatorGoatRate
     ) external override onlyOwner {
         require(funderPayee != address(0), "Invalid funder payee");
-        require(foundationPayee != address(0), "Invalid foundation payee");
+        require(foundation != address(0), "Invalid foundation");
         require(operatorPayee != address(0), "Invalid operator payee");
         require(
             foundationNativeRate + operatorNativeRate <= MAX_COMMISSION_RATE,
@@ -74,10 +74,10 @@ contract IncentivePool is Ownable, IIncentivePool {
             uint256 totalCommission = foundationShare + operatorShare;
 
             if (foundationShare > 0) {
-                nativeCommissions[foundationPayee] += foundationShare;
+                nativeCommissions[foundation] += foundationShare;
                 totalNativeCommission += foundationShare;
                 emit CommissionAccrued(
-                    foundationPayee,
+                    foundation,
                     address(0),
                     foundationShare
                 );
@@ -118,10 +118,10 @@ contract IncentivePool is Ownable, IIncentivePool {
                 operatorTokenShare;
 
             if (foundationTokenShare > 0) {
-                tokenCommissions[foundationPayee] += foundationTokenShare;
+                tokenCommissions[foundation] += foundationTokenShare;
                 totalTokenCommission += foundationTokenShare;
                 emit CommissionAccrued(
-                    foundationPayee,
+                    foundation,
                     address(rewardToken),
                     foundationTokenShare
                 );

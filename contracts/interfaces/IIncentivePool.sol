@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 interface IIncentivePool {
     function distributeReward(
         address funderPayee,
-        address foundationPayee,
+        address foundation,
         address operatorPayee,
         uint256 foundationNativeRate,
         uint256 foundationGoatRate,
