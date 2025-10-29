@@ -48,9 +48,15 @@ contract ValidatorEntry is Ownable {
 
     address[] private validatorList;
 
-    constructor(ILocking _underlying, IERC20 _rewardToken) Ownable(msg.sender) {
+    constructor(
+        ILocking _underlying,
+        IERC20 _rewardToken,
+        address _foundationPayee
+    ) Ownable(msg.sender) {
         underlying = _underlying;
         rewardToken = _rewardToken;
+        require(_foundationPayee != address(0), "Invalid foundation address");
+        foundationPayee = _foundationPayee;
     }
 
     function setFoundationPayee(address newFoundationPayee) external onlyOwner {
