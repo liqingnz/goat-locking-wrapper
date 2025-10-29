@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {ILocking} from "./interfaces/IGoatLocking.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ILocking} from "./interfaces/IGoatLocking.sol";
 import {IncentivePool} from "./IncentivePool.sol";
 
-contract ValidatorEntry {
+contract ValidatorEntry is Ownable {
     // the underlying staking contract address
     ILocking public immutable underlying;
     IERC20 public immutable rewardToken;
@@ -15,121 +15,165 @@ contract ValidatorEntry {
 
     event ValidatorMigrated(
         address validator,
-        address owner,
         address incentivePool,
-        address rewardPayee,
-        address funder,
-        uint256 commissionRate,
-        uint256 goatCommissionRate
+        address funderPayee,
+        address funder
     );
 
-    event ValidatorCommissionRateUpdated(
-        address validator,
-        uint256 commissionRate,
-        uint256 goatCommissionRate
+    event CommissionRatesUpdated(
+        uint256 foundationNativeRate,
+        uint256 operatorNativeRate,
+        uint256 foundationGoatRate,
+        uint256 operatorGoatRate
     );
 
-    event ValidatorRewardPayeeUpdated(address validator, address rewardPayee);
+    event FoundationPayeeUpdated(address foundationPayee);
+
+    event ValidatorFunderPayeeUpdated(address validator, address funderPayee);
+    event ValidatorOperatorUpdated(address validator, address operator);
 
     struct ValidatorInfo {
-        address owner; // the owner of the validator in this contract
         address incentivePool; // the incentive pool address for receiving rewards
-        address rewardPayee; // the address who receives the rewards in the incentive pool
+        address funderPayee; // the address who receives the rewards in the incentive pool
         address funder; // the address who funded the validator locking
-        uint256 commissionRate; // the commission rate in basis points (1e4 = 100%)
-        uint256 goatCommissionRate; // the commission rate for GOAT token in basis points (1e4 = 100%)
+        address operator; // the address who operates the validator and receives commissions
     }
 
-    constructor(ILocking _underlying, IERC20 _rewardToken) {
+    address public foundationPayee;
+    uint256 public foundationNativeCommissionRate;
+    uint256 public operatorNativeCommissionRate;
+    uint256 public foundationGoatCommissionRate;
+    uint256 public operatorGoatCommissionRate;
+
+    constructor(ILocking _underlying, IERC20 _rewardToken) Ownable(msg.sender) {
         underlying = _underlying;
         rewardToken = _rewardToken;
+    }
+
+    function setFoundationPayee(address newFoundationPayee) external onlyOwner {
+        require(newFoundationPayee != address(0), "Invalid foundation address");
+        foundationPayee = newFoundationPayee;
+        emit FoundationPayeeUpdated(newFoundationPayee);
+    }
+
+    // set commission configuration for validators, you must be the owner
+    function setCommissionRates(
+        uint256 newFoundationNativeRate,
+        uint256 newOperatorNativeRate,
+        uint256 newFoundationGoatRate,
+        uint256 newOperatorGoatRate
+    ) external onlyOwner {
+        require(newFoundationNativeRate <= 1e4, "Invalid foundation native");
+        require(newOperatorNativeRate <= 1e4, "Invalid operator native");
+        require(newFoundationGoatRate <= 1e4, "Invalid foundation goat");
+        require(newOperatorGoatRate <= 1e4, "Invalid operator goat");
+        require(
+            newFoundationNativeRate + newOperatorNativeRate <= 1e4,
+            "Native rate overflow"
+        );
+        require(
+            newFoundationGoatRate + newOperatorGoatRate <= 1e4,
+            "Goat rate overflow"
+        );
+
+        foundationNativeCommissionRate = newFoundationNativeRate;
+        operatorNativeCommissionRate = newOperatorNativeRate;
+        foundationGoatCommissionRate = newFoundationGoatRate;
+        operatorGoatCommissionRate = newOperatorGoatRate;
+
+        emit CommissionRatesUpdated(
+            newFoundationNativeRate,
+            newOperatorNativeRate,
+            newFoundationGoatRate,
+            newOperatorGoatRate
+        );
     }
 
     // migrate a validator to this contract
     // You must call this function with the changeValidatorOwner call in the same transaction
     function migrate(
         address validator,
-        address owner,
-        address rewardPayee,
-        address funder,
-        uint256 commissionRate,
-        uint256 goatCommissionRate
+        address operator,
+        address funderPayee,
+        address funder
     ) external {
         require(address(this) == underlying.owners(validator), "Not the owner");
         require(
             address(validators[validator].incentivePool) == address(0),
             "Already migrated"
         );
-        require(owner != address(0), "Invalid owner address");
-        require(rewardPayee != address(0), "Invalid reward payee address");
+        require(foundationPayee != address(0), "Foundation not set");
+        require(operator != address(0), "Invalid operator payee");
+        require(funderPayee != address(0), "Invalid funder payee address");
         require(funder != address(0), "Invalid funder address");
-        require(commissionRate <= 1e4, "Invalid commission rate");
         validators[validator] = ValidatorInfo({
-            owner: owner,
             incentivePool: address(new IncentivePool(rewardToken)),
-            rewardPayee: rewardPayee,
+            funderPayee: funderPayee,
             funder: funder,
-            commissionRate: commissionRate,
-            goatCommissionRate: goatCommissionRate
+            operator: operator
         });
         emit ValidatorMigrated(
             validator,
-            owner,
             validators[validator].incentivePool,
-            rewardPayee,
-            funder,
-            commissionRate,
-            goatCommissionRate
+            funderPayee,
+            funder
         );
     }
 
     // migrate from this contract to another one and cleanup the incentive pool
     function migrateTo(address validator, address newOwner) external {
         ValidatorInfo storage info = validators[validator];
-        require(msg.sender == info.owner, "Not the owner");
+        require(msg.sender == info.funder, "Not the funder");
         IncentivePool(info.incentivePool).distributeReward(
-            info.commissionRate,
-            info.goatCommissionRate,
-            info.rewardPayee
+            info.funderPayee,
+            foundationPayee,
+            info.operator,
+            foundationNativeCommissionRate,
+            foundationGoatCommissionRate,
+            operatorNativeCommissionRate,
+            operatorGoatCommissionRate
         );
-        IncentivePool(info.incentivePool).withdrawCommissions(info.owner);
+        IncentivePool(info.incentivePool).withdrawCommissions(
+            foundationPayee,
+            foundationPayee
+        );
+        IncentivePool(info.incentivePool).withdrawCommissions(
+            info.operator,
+            info.operator
+        );
         underlying.changeValidatorOwner(validator, newOwner);
         delete validators[validator];
     }
 
-    // set commission rate for a validator, you must be the owner
-    function setCommissionRate(
-        address validator,
-        uint256 commissionRate,
-        uint256 goatCommissionRate
-    ) external {
-        ValidatorInfo storage info = validators[validator];
-        require(msg.sender == info.owner, "Not the owner");
-        require(commissionRate <= 1e4, "Invalid commission rate");
-        info.commissionRate = commissionRate;
-        info.goatCommissionRate = goatCommissionRate;
-        emit ValidatorCommissionRateUpdated(
-            validator,
-            commissionRate,
-            goatCommissionRate
-        );
-    }
-
     // set reward payee for a validator, you must be the funder
-    function setRewardPayee(address validator, address rewardPayee) external {
+    function setFunderPayee(address validator, address funderPayee) external {
         ValidatorInfo storage info = validators[validator];
         // allow funder to change reward payee
         require(msg.sender == info.funder, "Not the funder");
-        require(rewardPayee != address(0), "Invalid reward payee address");
-        info.rewardPayee = rewardPayee;
-        emit ValidatorRewardPayeeUpdated(validator, rewardPayee);
+        require(funderPayee != address(0), "Invalid funder payee address");
+        info.funderPayee = funderPayee;
+        emit ValidatorFunderPayeeUpdated(validator, funderPayee);
+    }
+
+    function setOperator(address validator, address operator) external {
+        ValidatorInfo storage info = validators[validator];
+        require(info.incentivePool != address(0), "Not migrated");
+        require(msg.sender == info.operator, "Not operator");
+        require(operator != address(0), "Invalid operator address");
+        info.operator = operator;
+        emit ValidatorOperatorUpdated(validator, operator);
     }
 
     // withdraw commissions for a validator
     function withdrawCommissions(address validator, address to) external {
         ValidatorInfo storage info = validators[validator];
-        require(msg.sender == info.owner, "Not the owner");
-        IncentivePool(info.incentivePool).withdrawCommissions(to); // it checks if the address is valid
+        require(info.incentivePool != address(0), "Not migrated");
+        require(to != address(0), "Invalid address");
+        require(
+            msg.sender == foundationPayee || msg.sender == info.operator,
+            "Not commission owner"
+        );
+        IncentivePool(info.incentivePool).withdrawCommissions(msg.sender, to);
     }
 
     // claim rewards for a validator from underlying staking contract and distribute them
@@ -141,11 +185,7 @@ contract ValidatorEntry {
         // you will receive the rewards in the incentive pool at next block
         underlying.claim(validator, info.incentivePool);
         // distribute rewards if there are any
-        IncentivePool(info.incentivePool).distributeReward(
-            info.commissionRate,
-            info.goatCommissionRate,
-            info.rewardPayee
-        );
+        _distributeReward(info);
     }
 
     // withdraw rewards for a validator without claiming from underlying staking contract
@@ -153,11 +193,7 @@ contract ValidatorEntry {
         // anyone can call this function to claim rewards for a validator
         ValidatorInfo storage info = validators[validator];
         require(info.incentivePool != address(0), "Not migrated");
-        IncentivePool(info.incentivePool).distributeReward(
-            info.commissionRate,
-            info.goatCommissionRate,
-            info.rewardPayee
-        );
+        _distributeReward(info);
     }
 
     // delegate tokens to a validator, you must be the funder
@@ -199,5 +235,18 @@ contract ValidatorEntry {
         ValidatorInfo storage info = validators[validator];
         require(msg.sender == info.funder, "Not the funder");
         underlying.unlock(validator, recipient, values);
+    }
+
+    function _distributeReward(ValidatorInfo storage info) internal {
+        require(foundationPayee != address(0), "Foundation not set");
+        IncentivePool(info.incentivePool).distributeReward(
+            info.funderPayee,
+            foundationPayee,
+            info.operator,
+            foundationNativeCommissionRate,
+            foundationGoatCommissionRate,
+            operatorNativeCommissionRate,
+            operatorGoatCommissionRate
+        );
     }
 }

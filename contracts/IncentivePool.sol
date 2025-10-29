@@ -11,102 +11,171 @@ contract IncentivePool is Ownable, IIncentivePool {
 
     IERC20 public immutable rewardToken;
 
-    mapping(address token => uint256 amount) public commissions;
+    mapping(address owner => uint256 amount) public nativeCommissions;
+    mapping(address owner => uint256 amount) public tokenCommissions;
+    uint256 public totalNativeCommission;
+    uint256 public totalTokenCommission;
 
     event RewardDistributed(
         address payee,
         address token,
         uint256 reward,
-        uint256 commission
+        uint256 totalCommission
     );
 
-    event CommissionWithdrawn(address to, address token, uint256 amount);
+    event CommissionAccrued(address owner, address token, uint256 amount);
+
+    event CommissionWithdrawn(
+        address owner,
+        address to,
+        address token,
+        uint256 amount
+    );
 
     constructor(IERC20 _rewardToken) Ownable(msg.sender) {
         rewardToken = _rewardToken;
     }
 
     function distributeReward(
-        uint256 commissionRate,
-        uint256 goatCommissionRate,
-        address rewardPayee
+        address funderPayee,
+        address foundationPayee,
+        address operatorPayee,
+        uint256 foundationNativeRate,
+        uint256 foundationGoatRate,
+        uint256 operatorNativeRate,
+        uint256 operatorGoatRate
     ) external override onlyOwner {
+        require(funderPayee != address(0), "Invalid funder payee");
+        require(foundationPayee != address(0), "Invalid foundation payee");
+        require(operatorPayee != address(0), "Invalid operator payee");
         require(
-            commissionRate <= MAX_COMMISSION_RATE,
-            "Invalid commission rate"
+            foundationNativeRate + operatorNativeRate <= MAX_COMMISSION_RATE,
+            "Native rate overflow"
         );
-        require(rewardPayee != address(0), "Invalid reward payee address");
+        require(
+            foundationGoatRate + operatorGoatRate <= MAX_COMMISSION_RATE,
+            "Goat rate overflow"
+        );
 
         // Handle native currency reward
-        {
-            uint256 remain = address(this).balance - commissions[address(0)];
-            if (remain > 0) {
-                uint256 commission = (remain * commissionRate) /
-                    MAX_COMMISSION_RATE;
-                commissions[address(0)] += commission;
+        uint256 nativeAvailable = address(this).balance - totalNativeCommission;
+        if (nativeAvailable > 0) {
+            uint256 foundationShare = (nativeAvailable * foundationNativeRate) /
+                MAX_COMMISSION_RATE;
+            uint256 operatorShare = (nativeAvailable * operatorNativeRate) /
+                MAX_COMMISSION_RATE;
+            uint256 totalCommission = foundationShare + operatorShare;
 
-                uint256 reward = remain - commission;
-                if (reward > 0) {
-                    (bool successReward, ) = rewardPayee.call{value: reward}(
-                        ""
-                    );
-                    require(successReward, "Reward transfer failed");
-                }
-
-                emit RewardDistributed(
-                    rewardPayee,
+            if (foundationShare > 0) {
+                nativeCommissions[foundationPayee] += foundationShare;
+                totalNativeCommission += foundationShare;
+                emit CommissionAccrued(
+                    foundationPayee,
                     address(0),
-                    reward,
-                    commission
+                    foundationShare
                 );
             }
+            if (operatorShare > 0) {
+                nativeCommissions[operatorPayee] += operatorShare;
+                totalNativeCommission += operatorShare;
+                emit CommissionAccrued(
+                    operatorPayee,
+                    address(0),
+                    operatorShare
+                );
+            }
+
+            uint256 payout = nativeAvailable - totalCommission;
+            if (payout > 0) {
+                (bool success, ) = funderPayee.call{value: payout}("");
+                require(success, "Reward transfer failed");
+            }
+
+            emit RewardDistributed(
+                funderPayee,
+                address(0),
+                payout,
+                totalCommission
+            );
         }
 
         // Handle ERC20 reward token
-        {
-            uint256 tokenRemain = rewardToken.balanceOf(address(this)) -
-                commissions[address(rewardToken)];
-            if (tokenRemain > 0) {
-                uint256 tokenCommission = (tokenRemain * goatCommissionRate) /
-                    MAX_COMMISSION_RATE;
-                commissions[address(rewardToken)] += tokenCommission;
+        uint256 tokenAvailable = rewardToken.balanceOf(address(this)) -
+            totalTokenCommission;
+        if (tokenAvailable > 0) {
+            uint256 foundationTokenShare = (tokenAvailable *
+                foundationGoatRate) / MAX_COMMISSION_RATE;
+            uint256 operatorTokenShare = (tokenAvailable * operatorGoatRate) /
+                MAX_COMMISSION_RATE;
+            uint256 totalTokensCommission = foundationTokenShare +
+                operatorTokenShare;
 
-                uint256 tokenReward = tokenRemain - tokenCommission;
-                if (tokenReward > 0) {
-                    require(
-                        rewardToken.transfer(rewardPayee, tokenReward),
-                        "Token reward transfer failed"
-                    );
-                }
-
-                emit RewardDistributed(
-                    rewardPayee,
+            if (foundationTokenShare > 0) {
+                tokenCommissions[foundationPayee] += foundationTokenShare;
+                totalTokenCommission += foundationTokenShare;
+                emit CommissionAccrued(
+                    foundationPayee,
                     address(rewardToken),
-                    tokenReward,
-                    tokenCommission
+                    foundationTokenShare
                 );
             }
+            if (operatorTokenShare > 0) {
+                tokenCommissions[operatorPayee] += operatorTokenShare;
+                totalTokenCommission += operatorTokenShare;
+                emit CommissionAccrued(
+                    operatorPayee,
+                    address(rewardToken),
+                    operatorTokenShare
+                );
+            }
+
+            uint256 tokenPayout = tokenAvailable - totalTokensCommission;
+            if (tokenPayout > 0) {
+                require(
+                    rewardToken.transfer(funderPayee, tokenPayout),
+                    "Token reward transfer failed"
+                );
+            }
+
+            emit RewardDistributed(
+                funderPayee,
+                address(rewardToken),
+                tokenPayout,
+                totalTokensCommission
+            );
         }
     }
 
-    function withdrawCommissions(address to) external override onlyOwner {
+    function withdrawCommissions(
+        address owner,
+        address to
+    ) external override onlyOwner {
+        require(owner != address(0), "Invalid owner");
         require(to != address(0), "Invalid address");
-        uint256 amount = commissions[address(0)];
-        if (amount > 0) {
-            commissions[address(0)] = 0;
-            (bool success, ) = to.call{value: amount}("");
-            require(success, "Commission transfer failed");
-            emit CommissionWithdrawn(to, address(0), amount);
+
+        uint256 nativeAmount = nativeCommissions[owner];
+        if (nativeAmount > 0) {
+            nativeCommissions[owner] = 0;
+            totalNativeCommission -= nativeAmount;
+            (bool successNative, ) = to.call{value: nativeAmount}("");
+            require(successNative, "Commission transfer failed");
+            emit CommissionWithdrawn(owner, to, address(0), nativeAmount);
         }
 
-        uint256 tokenAmount = commissions[address(rewardToken)];
+        uint256 tokenAmount = tokenCommissions[owner];
         if (tokenAmount > 0) {
-            commissions[address(rewardToken)] = 0;
+            tokenCommissions[owner] = 0;
+            totalTokenCommission -= tokenAmount;
             require(
                 rewardToken.transfer(to, tokenAmount),
                 "Token commission transfer failed"
             );
-            emit CommissionWithdrawn(to, address(rewardToken), tokenAmount);
+            emit CommissionWithdrawn(
+                owner,
+                to,
+                address(rewardToken),
+                tokenAmount
+            );
         }
     }
 }
