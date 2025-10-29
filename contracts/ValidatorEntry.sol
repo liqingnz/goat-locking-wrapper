@@ -7,6 +7,8 @@ import {ILocking} from "./interfaces/IGoatLocking.sol";
 import {IncentivePool} from "./IncentivePool.sol";
 
 contract ValidatorEntry is Ownable {
+    uint256 public constant MAX_VALIDATOR_COUNT = 200;
+
     // the underlying staking contract address
     ILocking public immutable underlying;
     IERC20 public immutable rewardToken;
@@ -128,6 +130,10 @@ contract ValidatorEntry is Ownable {
         require(operator != address(0), "Invalid operator payee");
         require(funderPayee != address(0), "Invalid funder payee address");
         require(funder != address(0), "Invalid funder address");
+        require(
+            validatorList.length < MAX_VALIDATOR_COUNT,
+            "Exceeded max amount"
+        );
         validators[validator] = ValidatorInfo({
             incentivePool: address(new IncentivePool(rewardToken)),
             funderPayee: funderPayee,
