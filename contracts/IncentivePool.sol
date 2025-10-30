@@ -3,10 +3,11 @@ pragma solidity ^0.8.28;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 import {IIncentivePool} from "./interfaces/IIncentivePool.sol";
 
-contract IncentivePool is Ownable, IIncentivePool {
+contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
     uint256 public constant MAX_COMMISSION_RATE = 10000; // 100%
 
     IERC20 public immutable rewardToken;
@@ -15,26 +16,29 @@ contract IncentivePool is Ownable, IIncentivePool {
     mapping(address owner => uint256 amount) public tokenCommissions;
     uint256 public totalNativeCommission;
     uint256 public totalTokenCommission;
-
     event RewardDistributed(
-        address payee,
-        address token,
+        address indexed payee,
+        address indexed token,
         uint256 reward,
         uint256 totalCommission
     );
 
-    event CommissionAccrued(address owner, address token, uint256 amount);
+    event CommissionAccrued(
+        address indexed owner,
+        address indexed token,
+        uint256 amount
+    );
 
     event CommissionWithdrawn(
-        address owner,
-        address to,
-        address token,
+        address indexed owner,
+        address indexed to,
+        address indexed token,
         uint256 amount
     );
 
     event CommissionReassigned(
-        address from,
-        address to,
+        address indexed from,
+        address indexed to,
         uint256 nativeAmount,
         uint256 tokenAmount
     );
@@ -42,6 +46,8 @@ contract IncentivePool is Ownable, IIncentivePool {
     constructor(IERC20 _rewardToken) Ownable(msg.sender) {
         rewardToken = _rewardToken;
     }
+
+    receive() external payable {}
 
     function distributeReward(
         address funderPayee,
@@ -76,11 +82,7 @@ contract IncentivePool is Ownable, IIncentivePool {
             if (foundationShare > 0) {
                 nativeCommissions[foundation] += foundationShare;
                 totalNativeCommission += foundationShare;
-                emit CommissionAccrued(
-                    foundation,
-                    address(0),
-                    foundationShare
-                );
+                emit CommissionAccrued(foundation, address(0), foundationShare);
             }
             if (operatorShare > 0) {
                 nativeCommissions[operatorPayee] += operatorShare;
@@ -156,7 +158,7 @@ contract IncentivePool is Ownable, IIncentivePool {
     function withdrawCommissions(
         address owner,
         address to
-    ) external override onlyOwner {
+    ) external override onlyOwner nonReentrant {
         require(owner != address(0), "Invalid owner");
         require(to != address(0), "Invalid address");
 

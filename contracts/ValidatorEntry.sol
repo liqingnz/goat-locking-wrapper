@@ -35,7 +35,7 @@ contract ValidatorEntry is Ownable {
     event ValidatorOperatorUpdated(address validator, address operator);
 
     struct ValidatorInfo {
-        address incentivePool; // the incentive pool address for receiving rewards
+        address payable incentivePool; // the incentive pool address for receiving rewards
         address funderPayee; // the address who receives the rewards in the incentive pool
         address funder; // the address who funded the validator locking
         address operator; // the address who operates the validator and receives commissions
@@ -49,15 +49,22 @@ contract ValidatorEntry is Ownable {
     uint256 public operatorGoatCommissionRate;
 
     address[] private validatorList;
-
     constructor(
         ILocking _underlying,
         IERC20 _rewardToken,
         address _foundation
     ) Ownable(msg.sender) {
+        require(
+            address(_underlying) != address(0),
+            "Invalid underlying address"
+        );
+        require(
+            address(_rewardToken) != address(0),
+            "Invalid rewardToken address"
+        );
+        require(_foundation != address(0), "Invalid foundation address");
         underlying = _underlying;
         rewardToken = _rewardToken;
-        require(_foundation != address(0), "Invalid foundation address");
         foundation = _foundation;
     }
 
@@ -71,7 +78,7 @@ contract ValidatorEntry is Ownable {
         if (oldFoundation != address(0)) {
             for (uint256 i = 0; i < validatorList.length; i++) {
                 address validator = validatorList[i];
-                address pool = validators[validator].incentivePool;
+                address payable pool = validators[validator].incentivePool;
                 if (pool != address(0)) {
                     IncentivePool(pool).reassignCommission(
                         oldFoundation,
@@ -139,7 +146,7 @@ contract ValidatorEntry is Ownable {
             "Validator limit reached"
         );
         validators[validator] = ValidatorInfo({
-            incentivePool: address(new IncentivePool(rewardToken)),
+            incentivePool: payable(address(new IncentivePool(rewardToken))),
             funderPayee: funderPayee,
             funder: funder,
             operator: operator,
@@ -207,7 +214,10 @@ contract ValidatorEntry is Ownable {
     }
 
     // withdraw commissions for a validator
-    function withdrawCommissions(address validator, address to) external {
+    function withdrawCommissions(
+        address validator,
+        address to
+    ) external {
         ValidatorInfo storage info = validators[validator];
         require(info.incentivePool != address(0), "Not migrated");
         require(to != address(0), "Invalid address");
@@ -222,7 +232,7 @@ contract ValidatorEntry is Ownable {
         require(msg.sender == foundation, "Not foundation");
         require(to != address(0), "Invalid address");
         for (uint256 i = 0; i < validatorList.length; i++) {
-            address pool = validators[validatorList[i]].incentivePool;
+            address payable pool = validators[validatorList[i]].incentivePool;
             if (pool != address(0)) {
                 IncentivePool(pool).withdrawCommissions(foundation, to);
             }
