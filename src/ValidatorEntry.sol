@@ -13,7 +13,7 @@ contract ValidatorEntry is Ownable {
     ILocking public immutable underlying;
     IERC20 public immutable rewardToken;
 
-    mapping(address validator => ValidatorInfo info) validators;
+    mapping(address validator => ValidatorInfo info) public validators;
 
     event ValidatorMigrated(
         address validator,
@@ -214,10 +214,7 @@ contract ValidatorEntry is Ownable {
     }
 
     // withdraw commissions for a validator
-    function withdrawCommissions(
-        address validator,
-        address to
-    ) external {
+    function withdrawCommissions(address validator, address to) external {
         ValidatorInfo storage info = validators[validator];
         require(info.incentivePool != address(0), "Not migrated");
         require(to != address(0), "Invalid address");
