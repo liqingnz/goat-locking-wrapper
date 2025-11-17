@@ -12,7 +12,7 @@ interface IIncentivePool {
         uint256 operatorGoatRate
     ) external;
 
-    function withdrawCommissions(address owner, address to) external;
+    function withdrawFoundationCommission(address to) external;
 
-    function reassignCommission(address from, address to) external;
+    function withdrawOperatorCommission(address to) external;
 }

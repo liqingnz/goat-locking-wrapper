@@ -97,9 +97,8 @@ contract ValidatorEntryUpgradeable is
                 address validator = validatorList[i];
                 address payable pool = validators[validator].incentivePool;
                 if (pool != address(0)) {
-                    IncentivePool(pool).reassignCommission(
-                        oldFoundation,
-                        newFoundation
+                    IncentivePool(pool).withdrawFoundationCommission(
+                        oldFoundation
                     );
                 }
             }
@@ -177,18 +176,18 @@ contract ValidatorEntryUpgradeable is
             "Validator limit reached"
         );
 
-        validators[validator] = ValidatorInfo({
-            incentivePool: payable(
-                address(
-                    new IncentivePool(
-                        rewardToken,
-                        operator,
-                        operatorNativeAllowance,
-                        operatorTokenAllowance,
-                        allowanceUpdatePeriod
-                    )
+        address payable pool = payable(
+            address(
+                new IncentivePool(
+                    rewardToken,
+                    operatorNativeAllowance,
+                    operatorTokenAllowance,
+                    allowanceUpdatePeriod
                 )
-            ),
+            )
+        );
+        validators[validator] = ValidatorInfo({
+            incentivePool: pool,
             funderPayee: funderPayee,
             funder: funder,
             operator: operator,
@@ -219,12 +218,10 @@ contract ValidatorEntryUpgradeable is
             operatorGoatCommissionRate
         );
 
-        IncentivePool(info.incentivePool).withdrawCommissions(
-            foundation,
+        IncentivePool(info.incentivePool).withdrawFoundationCommission(
             foundation
         );
-        IncentivePool(info.incentivePool).withdrawCommissions(
-            info.operator,
+        IncentivePool(info.incentivePool).withdrawOperatorCommission(
             info.operator
         );
 
@@ -250,25 +247,46 @@ contract ValidatorEntryUpgradeable is
         require(operator != address(0), "Invalid operator address");
         require(info.operator != operator, "Operator unchanged");
 
-        IncentivePool(info.incentivePool).reassignCommission(
-            info.operator,
-            operator
+        IncentivePool(info.incentivePool).withdrawOperatorCommission(
+            info.operator
         );
         info.operator = operator;
 
         emit ValidatorOperatorUpdated(validator, operator);
     }
 
-    function withdrawCommissions(address validator, address to) external {
+    function setOperatorAllowanceConfig(
+        address validator,
+        uint256 nativeAllowance,
+        uint256 tokenAllowance,
+        uint256 updatePeriod
+    ) external onlyOwner {
         ValidatorInfo storage info = validators[validator];
         require(info.incentivePool != address(0), "Not migrated");
-        require(to != address(0), "Invalid address");
-        require(
-            msg.sender == foundation || msg.sender == info.operator,
-            "Not commission owner"
+        IncentivePool(info.incentivePool).setOperatorAllowanceConfig(
+            nativeAllowance,
+            tokenAllowance,
+            updatePeriod
         );
+    }
 
-        IncentivePool(info.incentivePool).withdrawCommissions(msg.sender, to);
+    function withdrawFoundationCommission(
+        address validator,
+        address to
+    ) external {
+        ValidatorInfo storage info = validators[validator];
+        require(info.incentivePool != address(0), "Not migrated");
+        require(msg.sender == foundation, "Not foundation");
+        require(to != address(0), "Invalid address");
+        IncentivePool(info.incentivePool).withdrawFoundationCommission(to);
+    }
+
+    function withdrawOperatorCommission(address validator, address to) external {
+        ValidatorInfo storage info = validators[validator];
+        require(info.incentivePool != address(0), "Not migrated");
+        require(msg.sender == info.operator, "Not operator");
+        require(to != address(0), "Invalid address");
+        IncentivePool(info.incentivePool).withdrawOperatorCommission(to);
     }
 
     function withdrawFoundationCommissions(address to) external {
@@ -278,7 +296,7 @@ contract ValidatorEntryUpgradeable is
         for (uint256 i = 0; i < validatorList.length; i++) {
             address payable pool = validators[validatorList[i]].incentivePool;
             if (pool != address(0)) {
-                IncentivePool(pool).withdrawCommissions(foundation, to);
+                IncentivePool(pool).withdrawFoundationCommission(to);
             }
         }
     }

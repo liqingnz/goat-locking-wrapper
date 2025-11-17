@@ -14,12 +14,13 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
 
     IERC20 public immutable rewardToken;
 
-    mapping(address owner => uint256 amount) public nativeCommissions;
-    mapping(address owner => uint256 amount) public tokenCommissions;
+    uint256 public foundationNativeCommission;
+    uint256 public operatorNativeCommission;
+    uint256 public foundationTokenCommission;
+    uint256 public operatorTokenCommission;
     uint256 public totalNativeCommission;
     uint256 public totalTokenCommission;
 
-    address public operator;
     uint256 public operatorNativeAllowance;
     uint256 public operatorTokenAllowance;
     uint256 public operatorNativeAllowanceUsed;
@@ -28,7 +29,6 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
     uint256 public allowanceClearTimestamp;
 
     event OperatorAllowanceConfigured(
-        address indexed operator,
         uint256 nativeAllowance,
         uint256 tokenAllowance,
         uint256 updatePeriod,
@@ -48,30 +48,26 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
         uint256 amount
     );
 
-    event CommissionWithdrawn(
-        address indexed owner,
+    event FoundationCommissionWithdrawn(
         address indexed to,
         address indexed token,
         uint256 amount
     );
 
-    event CommissionReassigned(
-        address indexed from,
+    event OperatorCommissionWithdrawn(
         address indexed to,
-        uint256 nativeAmount,
-        uint256 tokenAmount
+        address indexed token,
+        uint256 amount
     );
 
     constructor(
         IERC20 _rewardToken,
-        address initialOperator,
         uint256 nativeAllowance,
         uint256 tokenAllowance,
         uint256 updatePeriod
     ) Ownable(msg.sender) {
         rewardToken = _rewardToken;
         _setOperatorAllowanceConfig(
-            initialOperator,
             nativeAllowance,
             tokenAllowance,
             updatePeriod
@@ -110,20 +106,16 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
                 MAX_COMMISSION_RATE;
             uint256 operatorShare = (nativeAvailable * operatorNativeRate) /
                 MAX_COMMISSION_RATE;
-            operatorShare = _applyOperatorAllowance(
-                operatorPayee,
-                operatorShare,
-                true
-            );
+            operatorShare = _applyOperatorAllowance(operatorShare, true);
             uint256 totalCommission = foundationShare + operatorShare;
 
             if (foundationShare > 0) {
-                nativeCommissions[foundation] += foundationShare;
+                foundationNativeCommission += foundationShare;
                 totalNativeCommission += foundationShare;
                 emit CommissionAccrued(foundation, address(0), foundationShare);
             }
             if (operatorShare > 0) {
-                nativeCommissions[operatorPayee] += operatorShare;
+                operatorNativeCommission += operatorShare;
                 totalNativeCommission += operatorShare;
                 emit CommissionAccrued(
                     operatorPayee,
@@ -155,7 +147,6 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
             uint256 operatorTokenShare = (tokenAvailable * operatorGoatRate) /
                 MAX_COMMISSION_RATE;
             operatorTokenShare = _applyOperatorAllowance(
-                operatorPayee,
                 operatorTokenShare,
                 false
             );
@@ -163,7 +154,7 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
                 operatorTokenShare;
 
             if (foundationTokenShare > 0) {
-                tokenCommissions[foundation] += foundationTokenShare;
+                foundationTokenCommission += foundationTokenShare;
                 totalTokenCommission += foundationTokenShare;
                 emit CommissionAccrued(
                     foundation,
@@ -172,7 +163,7 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
                 );
             }
             if (operatorTokenShare > 0) {
-                tokenCommissions[operatorPayee] += operatorTokenShare;
+                operatorTokenCommission += operatorTokenShare;
                 totalTokenCommission += operatorTokenShare;
                 emit CommissionAccrued(
                     operatorPayee,
@@ -198,32 +189,29 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
         }
     }
 
-    function withdrawCommissions(
-        address owner,
+    function withdrawFoundationCommission(
         address to
     ) external override onlyOwner nonReentrant {
-        require(owner != address(0), "Invalid owner");
         require(to != address(0), "Invalid address");
 
-        uint256 nativeAmount = nativeCommissions[owner];
+        uint256 nativeAmount = foundationNativeCommission;
         if (nativeAmount > 0) {
-            nativeCommissions[owner] = 0;
+            foundationNativeCommission = 0;
             totalNativeCommission -= nativeAmount;
             (bool successNative, ) = to.call{value: nativeAmount}("");
             require(successNative, "Commission transfer failed");
-            emit CommissionWithdrawn(owner, to, address(0), nativeAmount);
+            emit FoundationCommissionWithdrawn(to, address(0), nativeAmount);
         }
 
-        uint256 tokenAmount = tokenCommissions[owner];
+        uint256 tokenAmount = foundationTokenCommission;
         if (tokenAmount > 0) {
-            tokenCommissions[owner] = 0;
+            foundationTokenCommission = 0;
             totalTokenCommission -= tokenAmount;
             require(
                 rewardToken.transfer(to, tokenAmount),
                 "Token commission transfer failed"
             );
-            emit CommissionWithdrawn(
-                owner,
+            emit FoundationCommissionWithdrawn(
                 to,
                 address(rewardToken),
                 tokenAmount
@@ -231,30 +219,33 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
         }
     }
 
-    function reassignCommission(
-        address from,
+    function withdrawOperatorCommission(
         address to
-    ) external override onlyOwner {
-        require(from != address(0), "Invalid from");
-        require(to != address(0), "Invalid to");
-        if (from == to) {
-            return;
-        }
+    ) external override onlyOwner nonReentrant {
+        require(to != address(0), "Invalid address");
 
-        uint256 nativeAmount = nativeCommissions[from];
+        uint256 nativeAmount = operatorNativeCommission;
         if (nativeAmount > 0) {
-            nativeCommissions[from] = 0;
-            nativeCommissions[to] += nativeAmount;
+            operatorNativeCommission = 0;
+            totalNativeCommission -= nativeAmount;
+            (bool successNative, ) = to.call{value: nativeAmount}("");
+            require(successNative, "Commission transfer failed");
+            emit OperatorCommissionWithdrawn(to, address(0), nativeAmount);
         }
 
-        uint256 tokenAmount = tokenCommissions[from];
+        uint256 tokenAmount = operatorTokenCommission;
         if (tokenAmount > 0) {
-            tokenCommissions[from] = 0;
-            tokenCommissions[to] += tokenAmount;
-        }
-
-        if (nativeAmount > 0 || tokenAmount > 0) {
-            emit CommissionReassigned(from, to, nativeAmount, tokenAmount);
+            operatorTokenCommission = 0;
+            totalTokenCommission -= tokenAmount;
+            require(
+                rewardToken.transfer(to, tokenAmount),
+                "Token commission transfer failed"
+            );
+            emit OperatorCommissionWithdrawn(
+                to,
+                address(rewardToken),
+                tokenAmount
+            );
         }
     }
 
@@ -262,7 +253,6 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
         external
         view
         returns (
-            address operatorAddress,
             uint256 nativeAllowance,
             uint256 tokenAllowance,
             uint256 updatePeriod,
@@ -270,7 +260,6 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
         )
     {
         return (
-            operator,
             operatorNativeAllowance,
             operatorTokenAllowance,
             allowanceUpdatePeriod,
@@ -279,20 +268,17 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
     }
 
     function setOperatorAllowanceConfig(
-        address newOperator,
         uint256 nativeAllowance,
         uint256 tokenAllowance,
         uint256 updatePeriod
     ) external onlyOwner {
         _setOperatorAllowanceConfig(
-            newOperator,
             nativeAllowance,
             tokenAllowance,
             updatePeriod
         );
 
         emit OperatorAllowanceConfigured(
-            newOperator,
             nativeAllowance,
             tokenAllowance,
             updatePeriod,
@@ -315,12 +301,10 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
     }
 
     function _setOperatorAllowanceConfig(
-        address newOperator,
         uint256 nativeAllowance,
         uint256 tokenAllowance,
         uint256 updatePeriod
     ) internal {
-        operator = newOperator;
         operatorNativeAllowance = nativeAllowance;
         operatorTokenAllowance = tokenAllowance;
         allowanceUpdatePeriod = updatePeriod;
@@ -332,16 +316,11 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
     }
 
     function _applyOperatorAllowance(
-        address operatorPayee,
         uint256 amount,
         bool isNative
     ) internal returns (uint256) {
         if (amount == 0) {
             return 0;
-        }
-
-        if (operator == address(0) || operatorPayee != operator) {
-            return amount;
         }
 
         uint256 cap = isNative
