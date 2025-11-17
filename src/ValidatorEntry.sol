@@ -7,6 +7,7 @@ import {ILocking} from "./interfaces/IGoatLocking.sol";
 import {IncentivePool} from "./IncentivePool.sol";
 
 contract ValidatorEntry is Ownable {
+    uint256 public constant MAX_COMMISSION_RATE = 10000; // 100%
     uint256 public constant MAX_VALIDATOR_COUNT = 200;
 
     // the underlying staking contract address
@@ -98,16 +99,29 @@ contract ValidatorEntry is Ownable {
         uint256 newFoundationGoatRate,
         uint256 newOperatorGoatRate
     ) external onlyOwner {
-        require(newFoundationNativeRate <= 1e4, "Invalid foundation native");
-        require(newOperatorNativeRate <= 1e4, "Invalid operator native");
-        require(newFoundationGoatRate <= 1e4, "Invalid foundation goat");
-        require(newOperatorGoatRate <= 1e4, "Invalid operator goat");
         require(
-            newFoundationNativeRate + newOperatorNativeRate <= 1e4,
+            newFoundationNativeRate <= MAX_COMMISSION_RATE,
+            "Invalid foundation native"
+        );
+        require(
+            newOperatorNativeRate <= MAX_COMMISSION_RATE,
+            "Invalid operator native"
+        );
+        require(
+            newFoundationGoatRate <= MAX_COMMISSION_RATE,
+            "Invalid foundation goat"
+        );
+        require(
+            newOperatorGoatRate <= MAX_COMMISSION_RATE,
+            "Invalid operator goat"
+        );
+        require(
+            newFoundationNativeRate + newOperatorNativeRate <=
+                MAX_COMMISSION_RATE,
             "Native rate overflow"
         );
         require(
-            newFoundationGoatRate + newOperatorGoatRate <= 1e4,
+            newFoundationGoatRate + newOperatorGoatRate <= MAX_COMMISSION_RATE,
             "Goat rate overflow"
         );
 
@@ -130,7 +144,10 @@ contract ValidatorEntry is Ownable {
         address validator,
         address operator,
         address funderPayee,
-        address funder
+        address funder,
+        uint256 operatorNativeAllowance,
+        uint256 operatorTokenAllowance,
+        uint256 allowanceUpdatePeriod
     ) external {
         require(address(this) == underlying.owners(validator), "Not the owner");
         require(
@@ -146,7 +163,17 @@ contract ValidatorEntry is Ownable {
             "Validator limit reached"
         );
         validators[validator] = ValidatorInfo({
-            incentivePool: payable(address(new IncentivePool(rewardToken))),
+            incentivePool: payable(
+                address(
+                    new IncentivePool(
+                        rewardToken,
+                        operator,
+                        operatorNativeAllowance,
+                        operatorTokenAllowance,
+                        allowanceUpdatePeriod
+                    )
+                )
+            ),
             funderPayee: funderPayee,
             funder: funder,
             operator: operator,
@@ -211,6 +238,22 @@ contract ValidatorEntry is Ownable {
         );
         info.operator = operator;
         emit ValidatorOperatorUpdated(validator, operator);
+    }
+
+    function setOperatorAllowanceConfig(
+        address validator,
+        uint256 nativeAllowance,
+        uint256 tokenAllowance,
+        uint256 updatePeriod
+    ) external onlyOwner {
+        ValidatorInfo storage info = validators[validator];
+        require(info.incentivePool != address(0), "Not migrated");
+        IncentivePool(info.incentivePool).setOperatorAllowanceConfig(
+            info.operator,
+            nativeAllowance,
+            tokenAllowance,
+            updatePeriod
+        );
     }
 
     // withdraw commissions for a validator
