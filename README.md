@@ -132,7 +132,7 @@ function changeValidatorOwner(
 
 1. Call `setLockingDelegate(<DELEGATE_CONTRACT_ADDRESS>)` on the SequencerPool.
 2. Call `changeValidatorOwner(<DELEGATE_CONTRACT_ADDRESS>)` on the SequencerPool.
-3. Call `migrate(<VALIDATOR_ADDRESS>, <OPERATOR_ADDRESS>, <DISTRIBUTOR_CONTRACT_ADDRESS>, <SEQUENCER_POOL_ADDRESS>)` on the delegate contract.
+3. Call `migrate(<VALIDATOR_ADDRESS>, <OPERATOR_ADDRESS>, <DISTRIBUTOR_CONTRACT_ADDRESS>, <SEQUENCER_POOL_ADDRESS>, <OPERATOR_NATIVE_ALLOWANCE>, <OPERATOR_GOAT_ALLOWANCE>, <ALLOWANCE_UPDATE_PERIOD)` on the delegate contract.
 
 > Execute steps 2 and 3 in the same transaction to avoid front-running.
 
