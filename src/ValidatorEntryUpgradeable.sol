@@ -289,7 +289,7 @@ contract ValidatorEntryUpgradeable is
         IncentivePool(info.incentivePool).withdrawOperatorCommission(to);
     }
 
-    function withdrawFoundationCommissions(address to) external {
+    function withdrawAllFoundationCommissions(address to) external {
         require(msg.sender == foundation, "Not foundation");
         require(to != address(0), "Invalid address");
 
