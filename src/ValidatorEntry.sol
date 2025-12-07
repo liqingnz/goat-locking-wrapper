@@ -77,7 +77,7 @@ contract ValidatorEntry is Ownable {
         require(oldFoundation != newFoundation, "Foundation unchanged");
 
         if (oldFoundation != address(0)) {
-            for (uint256 i = 0; i < validatorList.length; i++) {
+            for (uint256 i; i < validatorList.length; i++) {
                 address validator = validatorList[i];
                 address payable pool = validators[validator].incentivePool;
                 if (pool != address(0)) {
@@ -276,7 +276,7 @@ contract ValidatorEntry is Ownable {
     function withdrawAllFoundationCommissions(address to) external {
         require(msg.sender == foundation, "Not foundation");
         require(to != address(0), "Invalid address");
-        for (uint256 i = 0; i < validatorList.length; i++) {
+        for (uint256 i; i < validatorList.length; i++) {
             address payable pool = validators[validatorList[i]].incentivePool;
             if (pool != address(0)) {
                 IncentivePool(pool).withdrawFoundationCommission(to);
@@ -311,7 +311,7 @@ contract ValidatorEntry is Ownable {
     ) external payable {
         ValidatorInfo storage info = validators[validator];
         require(msg.sender == info.funder, "Not the funder");
-        for (uint i = 0; i < values.length; i++) {
+        for (uint256 i; i < values.length; i++) {
             if (values[i].token == address(0)) {
                 continue; // skip native token
             }

@@ -79,8 +79,7 @@ GOAT Locking Wrapper Contract is a validator staking management system that serv
 
 | Contract       | Testnet Address                            | Mainnet Address |
 | -------------- | ------------------------------------------ | --------------- |
-| ValidatorEntry | 0xE6512d6202e9Ee3aE902908EC7Db46C641488Cc9 | 0x              |
-| SequencerPool  | 0x47b8bD7a6b1E53B5a0006cF731490c1383B82dF1 | 0x              |
+| ValidatorEntry | 0xea95AF1A36DEe235aC290fa0Bec493271558D101 | 0x              |
 
 ## SequencerPool Contract Changes
 
