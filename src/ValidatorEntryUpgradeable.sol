@@ -15,6 +15,14 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ILocking} from "./interfaces/IGoatLocking.sol";
 import {IncentivePool} from "./IncentivePool.sol";
 
+/**
+ * @title ValidatorEntryUpgradeable
+ * @notice Upgradeable entrypoint for managing GOAT validators, wrapping the
+ * underlying locking contract with funder/operator/foundation coordination and
+ * per-validator `IncentivePool` deployments.
+ * @dev Mirrors `ValidatorEntry` but follows OZ's UUPS pattern so commission
+ * logic and bookkeeping can evolve over time.
+ */
 contract ValidatorEntryUpgradeable is
     Initializable,
     OwnableUpgradeable,
@@ -68,6 +76,11 @@ contract ValidatorEntryUpgradeable is
         _disableInitializers();
     }
 
+    /// @notice Initializes the upgradeable storage.
+    /// @param _underlying Goat locking contract that owns validators.
+    /// @param _rewardToken ERC20 token paid from incentive pools.
+    /// @param _foundation Foundation commission recipient.
+    /// @param initialOwner Owner of the proxy (defaults to caller if zero).
     function initialize(
         ILocking _underlying,
         IERC20 _rewardToken,
@@ -93,6 +106,8 @@ contract ValidatorEntryUpgradeable is
         foundation = _foundation;
     }
 
+    /// @notice Updates the foundation payee and withdraws pending commissions.
+    /// @param newFoundation Replacement foundation address.
     function setFoundation(address newFoundation) external onlyOwner {
         require(newFoundation != address(0), "Invalid foundation address");
         address oldFoundation = foundation;
@@ -114,6 +129,11 @@ contract ValidatorEntryUpgradeable is
         emit FoundationUpdated(newFoundation);
     }
 
+    /// @notice Configures global commission rates for all validators.
+    /// @param newFoundationNativeRate Foundation share on native rewards (bps).
+    /// @param newOperatorNativeRate Operator share on native rewards (bps).
+    /// @param newFoundationGoatRate Foundation share on token rewards (bps).
+    /// @param newOperatorGoatRate Operator share on token rewards (bps).
     function setCommissionRates(
         uint256 newFoundationNativeRate,
         uint256 newOperatorNativeRate,
@@ -159,6 +179,14 @@ contract ValidatorEntryUpgradeable is
         );
     }
 
+    /// @notice Deploys a dedicated incentive pool for the validator.
+    /// @param validator Validator address being migrated.
+    /// @param operator Operator receiving commissions.
+    /// @param funderPayee Recipient of net rewards.
+    /// @param funder Address that owns deposits.
+    /// @param operatorNativeAllowance Allowance cap for native commissions.
+    /// @param operatorTokenAllowance Allowance cap for token commissions.
+    /// @param allowanceUpdatePeriod Duration of allowance windows.
     function migrate(
         address validator,
         address operator,
@@ -210,6 +238,9 @@ contract ValidatorEntryUpgradeable is
         );
     }
 
+    /// @notice Removes a validator and hands ownership to a new contract and cleanup the incentive pool.
+    /// @param validator Validator being migrated away.
+    /// @param newOwner Target contract that should become validator owner.
     function migrateTo(address validator, address newOwner) external {
         ValidatorInfo storage info = validators[validator];
         require(msg.sender == info.funder, "Not the funder");
@@ -236,6 +267,9 @@ contract ValidatorEntryUpgradeable is
         delete validators[validator];
     }
 
+    /// @notice Updates the funder payee address.
+    /// @param validator Target validator.
+    /// @param funderPayee New reward recipient.
     function setFunderPayee(address validator, address funderPayee) external {
         ValidatorInfo storage info = validators[validator];
         require(msg.sender == info.funder, "Not the funder");
@@ -246,6 +280,9 @@ contract ValidatorEntryUpgradeable is
         emit ValidatorFunderPayeeUpdated(validator, funderPayee);
     }
 
+    /// @notice Rotates the validator operator.
+    /// @param validator Target validator.
+    /// @param operator New operator payee.
     function setOperator(address validator, address operator) external {
         ValidatorInfo storage info = validators[validator];
         require(info.incentivePool != address(0), "Not migrated");
@@ -261,6 +298,11 @@ contract ValidatorEntryUpgradeable is
         emit ValidatorOperatorUpdated(validator, operator);
     }
 
+    /// @notice Sets allowance caps for operator commissions.
+    /// @param validator Target validator.
+    /// @param nativeAllowance Allowed native commission per period.
+    /// @param tokenAllowance Allowed token commission per period.
+    /// @param updatePeriod Duration of the enforcement window.
     function setOperatorAllowanceConfig(
         address validator,
         uint256 nativeAllowance,
@@ -276,6 +318,9 @@ contract ValidatorEntryUpgradeable is
         );
     }
 
+    /// @notice Withdraws the foundation's commissions for a validator.
+    /// @param validator Target validator.
+    /// @param to Destination wallet.
     function withdrawFoundationCommission(
         address validator,
         address to
@@ -287,6 +332,9 @@ contract ValidatorEntryUpgradeable is
         IncentivePool(info.incentivePool).withdrawFoundationCommission(to);
     }
 
+    /// @notice Withdraws the operator's commissions for a validator.
+    /// @param validator Target validator.
+    /// @param to Destination wallet.
     function withdrawOperatorCommission(
         address validator,
         address to
@@ -298,6 +346,8 @@ contract ValidatorEntryUpgradeable is
         IncentivePool(info.incentivePool).withdrawOperatorCommission(to);
     }
 
+    /// @notice Withdraws the foundation commissions across all validators.
+    /// @param to Destination wallet.
     function withdrawAllFoundationCommissions(address to) external {
         require(msg.sender == foundation, "Not foundation");
         require(to != address(0), "Invalid address");
@@ -310,6 +360,8 @@ contract ValidatorEntryUpgradeable is
         }
     }
 
+    /// @notice Claims rewards from the underlying locking contract.
+    /// @param validator Target validator.
     function claimRewards(address validator) external {
         ValidatorInfo storage info = validators[validator];
         require(info.incentivePool != address(0), "Not migrated");
@@ -318,6 +370,8 @@ contract ValidatorEntryUpgradeable is
         _distributeReward(info);
     }
 
+    /// @notice Distributes rewards already stored in the incentive pool.
+    /// @param validator Target validator.
     function withdrawRewards(address validator) external {
         ValidatorInfo storage info = validators[validator];
         require(info.incentivePool != address(0), "Not migrated");
@@ -325,6 +379,9 @@ contract ValidatorEntryUpgradeable is
         _distributeReward(info);
     }
 
+    /// @notice Delegates assets to the underlying validator.
+    /// @param validator Target validator.
+    /// @param values Lock instructions forwarded to the locking contract.
     function delegate(
         address validator,
         ILocking.Locking[] calldata values
@@ -357,6 +414,10 @@ contract ValidatorEntryUpgradeable is
         underlying.lock{value: msg.value}(validator, values);
     }
 
+    /// @notice Unlocks assets from the underlying validator.
+    /// @param validator Target validator.
+    /// @param recipient Address receiving unlocked funds.
+    /// @param values Unlock instructions forwarded to the locking contract.
     function undelegate(
         address validator,
         address recipient,
@@ -368,6 +429,8 @@ contract ValidatorEntryUpgradeable is
         underlying.unlock(validator, recipient, values);
     }
 
+    /// @dev Pushes rewards plus commissions to the relevant parties.
+    /// @param info Validator metadata referencing the incentive pool.
     function _distributeReward(ValidatorInfo storage info) internal {
         require(foundation != address(0), "Foundation not set");
 
@@ -382,6 +445,9 @@ contract ValidatorEntryUpgradeable is
         );
     }
 
+    /// @dev Removes a validator from storage in O(1) time.
+    /// @param validator Address to remove.
+    /// @param index Expected index in `validatorList`.
     function _removeValidator(address validator, uint256 index) internal {
         require(validatorList[index] == validator, "Index mismatch");
 

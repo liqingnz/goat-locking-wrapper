@@ -6,6 +6,14 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ILocking} from "./interfaces/IGoatLocking.sol";
 import {IncentivePool} from "./IncentivePool.sol";
 
+/**
+ * @title ValidatorEntry
+ * @notice Coordinates the lifecycle of validators for the GOAT locking system.
+ * Manages validator migration, role configuration, and reward distribution via
+ * dedicated `IncentivePool` instances while enforcing commission settings.
+ * @dev This non-upgradeable variant relies on immutable references to the
+ * underlying locking contract and the reward token.
+ */
 contract ValidatorEntry is Ownable {
     uint256 public constant MAX_COMMISSION_RATE = 10000; // 100%
     uint256 public constant MAX_VALIDATOR_COUNT = 200;
@@ -50,6 +58,11 @@ contract ValidatorEntry is Ownable {
     uint256 public operatorGoatCommissionRate;
 
     address[] private validatorList;
+
+    /// @notice Initializes the entry contract with immutable dependencies.
+    /// @param _underlying Goat locking contract that actually manages validators.
+    /// @param _rewardToken ERC20 token paid out of incentive pools.
+    /// @param _foundation Address collecting the foundation commission share.
     constructor(
         ILocking _underlying,
         IERC20 _rewardToken,
@@ -69,8 +82,9 @@ contract ValidatorEntry is Ownable {
         foundation = _foundation;
     }
 
-    // set new foundation payee address
-    // Setting a new foundation payee address will transfers any unwithdrawn commission to the replacement
+    /// @notice Updates the foundation payee and prepares existing pools for the switch.
+    /// @dev Pending commissions are withdrawn to the previous foundation so it can claim later.
+    /// @param newFoundation Replacement foundation address.
     function setFoundation(address newFoundation) external onlyOwner {
         require(newFoundation != address(0), "Invalid foundation address");
         address oldFoundation = foundation;
@@ -91,7 +105,11 @@ contract ValidatorEntry is Ownable {
         emit FoundationUpdated(newFoundation);
     }
 
-    // set commission configuration for validators, you must be the owner
+    /// @notice Configures global commission rates for all validators.
+    /// @param newFoundationNativeRate Foundation share on native rewards (bps).
+    /// @param newOperatorNativeRate Operator share on native rewards (bps).
+    /// @param newFoundationGoatRate Foundation share on token rewards (bps).
+    /// @param newOperatorGoatRate Operator share on token rewards (bps).
     function setCommissionRates(
         uint256 newFoundationNativeRate,
         uint256 newOperatorNativeRate,
@@ -137,8 +155,15 @@ contract ValidatorEntry is Ownable {
         );
     }
 
-    // migrate a validator to this contract
-    // You must call this function with the changeValidatorOwner call in the same transaction
+    /// @notice Deploys an incentive pool and tracks metadata for a validator.
+    /// @dev Must be coordinated with `underlying.changeValidatorOwner`.
+    /// @param validator Validator address being migrated.
+    /// @param operator Operator receiving commissions.
+    /// @param funderPayee Recipient of net rewards.
+    /// @param funder Address that controls delegation/undelegation.
+    /// @param operatorNativeAllowance Allowance cap for native commission per period.
+    /// @param operatorTokenAllowance Allowance cap for token commission per period.
+    /// @param allowanceUpdatePeriod Period length for refreshing allowances.
     function migrate(
         address validator,
         address operator,
@@ -187,7 +212,9 @@ contract ValidatorEntry is Ownable {
         );
     }
 
-    // migrate from this contract to another one and cleanup the incentive pool
+    /// @notice Moves a validator away from this entry contract and cleanup the incentive pool.
+    /// @param validator Validator being migrated out.
+    /// @param newOwner Contract that will own the validator afterwards.
     function migrateTo(address validator, address newOwner) external {
         ValidatorInfo storage info = validators[validator];
         require(msg.sender == info.funder, "Not the funder");
@@ -211,7 +238,9 @@ contract ValidatorEntry is Ownable {
         delete validators[validator];
     }
 
-    // set reward payee for a validator, you must be the funder
+    /// @notice Updates the reward payee for a validator.
+    /// @param validator Target validator.
+    /// @param funderPayee New recipient for reward payouts.
     function setFunderPayee(address validator, address funderPayee) external {
         ValidatorInfo storage info = validators[validator];
         // allow funder to change reward payee
@@ -221,8 +250,10 @@ contract ValidatorEntry is Ownable {
         emit ValidatorFunderPayeeUpdated(validator, funderPayee);
     }
 
-    // set new operator address
-    // rotating the operator still transfers any unwithdrawn commission to the replacement
+    /// @notice Rotates the operator for a validator.
+    /// @dev Pending operator commissions are withdrawn to the old operator first.
+    /// @param validator Target validator.
+    /// @param operator New operator address.
     function setOperator(address validator, address operator) external {
         ValidatorInfo storage info = validators[validator];
         require(info.incentivePool != address(0), "Not migrated");
@@ -236,6 +267,11 @@ contract ValidatorEntry is Ownable {
         emit ValidatorOperatorUpdated(validator, operator);
     }
 
+    /// @notice Updates allowance caps a validator's operator can earn per period.
+    /// @param validator Target validator.
+    /// @param nativeAllowance Allowed native commission per window.
+    /// @param tokenAllowance Allowed token commission per window.
+    /// @param updatePeriod Duration of a single window.
     function setOperatorAllowanceConfig(
         address validator,
         uint256 nativeAllowance,
@@ -251,6 +287,9 @@ contract ValidatorEntry is Ownable {
         );
     }
 
+    /// @notice Withdraws the foundation's commissions for a validator.
+    /// @param validator Target validator.
+    /// @param to Destination wallet for funds.
     function withdrawFoundationCommission(
         address validator,
         address to
@@ -262,6 +301,9 @@ contract ValidatorEntry is Ownable {
         IncentivePool(info.incentivePool).withdrawFoundationCommission(to);
     }
 
+    /// @notice Withdraws the operator's commissions for a validator.
+    /// @param validator Target validator.
+    /// @param to Destination wallet for funds.
     function withdrawOperatorCommission(
         address validator,
         address to
@@ -273,6 +315,8 @@ contract ValidatorEntry is Ownable {
         IncentivePool(info.incentivePool).withdrawOperatorCommission(to);
     }
 
+    /// @notice Withdraws the foundation commissions across all validators.
+    /// @param to Destination wallet for funds.
     function withdrawAllFoundationCommissions(address to) external {
         require(msg.sender == foundation, "Not foundation");
         require(to != address(0), "Invalid address");
@@ -284,7 +328,8 @@ contract ValidatorEntry is Ownable {
         }
     }
 
-    // claim rewards for a validator from underlying staking contract and distribute them
+    /// @notice Claims pending rewards from the locking contract and distributes them.
+    /// @param validator Target validator.
     function claimRewards(address validator) external {
         // anyone can call this function to claim rewards for a validator
         ValidatorInfo storage info = validators[validator];
@@ -296,7 +341,8 @@ contract ValidatorEntry is Ownable {
         _distributeReward(info);
     }
 
-    // withdraw rewards for a validator without claiming from underlying staking contract
+    /// @notice Distributes whatever rewards are already in the incentive pool.
+    /// @param validator Target validator.
     function withdrawRewards(address validator) external {
         // anyone can call this function to claim rewards for a validator
         ValidatorInfo storage info = validators[validator];
@@ -304,7 +350,9 @@ contract ValidatorEntry is Ownable {
         _distributeReward(info);
     }
 
-    // delegate tokens to a validator, you must be the funder
+    /// @notice Locks additional funds into the underlying validator.
+    /// @param validator Target validator.
+    /// @param values Locking instructions forwarded to the underlying contract.
     function delegate(
         address validator,
         ILocking.Locking[] calldata values
@@ -334,7 +382,10 @@ contract ValidatorEntry is Ownable {
         underlying.lock{value: msg.value}(validator, values);
     }
 
-    // withdraw tokens from a validator, you must be the funder
+    /// @notice Unlocks funds from the underlying validator.
+    /// @param validator Target validator.
+    /// @param recipient Address receiving unlocked funds.
+    /// @param values Unlocking instructions forwarded to the underlying contract.
     function undelegate(
         address validator,
         address recipient,
@@ -345,6 +396,8 @@ contract ValidatorEntry is Ownable {
         underlying.unlock(validator, recipient, values);
     }
 
+    /// @dev Pushes rewards plus commissions to the appropriate parties.
+    /// @param info Validator metadata containing the incentive pool reference.
     function _distributeReward(ValidatorInfo storage info) internal {
         require(foundation != address(0), "Foundation not set");
         IncentivePool(info.incentivePool).distributeReward(
@@ -358,6 +411,9 @@ contract ValidatorEntry is Ownable {
         );
     }
 
+    /// @dev Removes a validator from the in-memory list in O(1) time.
+    /// @param validator Validator address to remove.
+    /// @param index Expected index in the array.
     function _removeValidator(address validator, uint256 index) internal {
         require(validatorList[index] == validator, "Index mismatch");
         uint256 lastIndex = validatorList.length - 1;

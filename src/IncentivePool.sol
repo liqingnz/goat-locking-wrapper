@@ -9,6 +9,14 @@ import {
 
 import {IIncentivePool} from "./interfaces/IIncentivePool.sol";
 
+/**
+ * @title IncentivePool
+ * @notice Holds pending rewards for a single validator and enforces commission
+ * splits plus operator allowance caps before paying the funder.
+ * @dev Each pool is owned by a `ValidatorEntry*` contract which controls
+ * distribution, withdrawals, and allowance configuration on behalf of the
+ * validator.
+ */
 contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
     uint256 public constant MAX_COMMISSION_RATE = 10000; // 100%
 
@@ -60,6 +68,11 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
         uint256 amount
     );
 
+    /// @notice Constructs a pool tied to a specific validator/reward token pair.
+    /// @param _rewardToken ERC20 token used as the incentive currency.
+    /// @param nativeAllowance Operator cap for native commissions per period.
+    /// @param tokenAllowance Operator cap for token commissions per period.
+    /// @param updatePeriod Duration of an allowance window.
     constructor(
         IERC20 _rewardToken,
         uint256 nativeAllowance,
@@ -74,8 +87,17 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
         );
     }
 
+    /// @notice Accepts native rewards from the locking contract.
     receive() external payable {}
 
+    /// @notice Splits pool balances into commissions and funder payouts.
+    /// @param funderPayee Recipient of the net reward.
+    /// @param foundation Foundation commission owner.
+    /// @param operatorPayee Operator commission owner.
+    /// @param foundationNativeRate Foundation share of native rewards (bps).
+    /// @param foundationGoatRate Foundation share of token rewards (bps).
+    /// @param operatorNativeRate Operator share of native rewards (bps).
+    /// @param operatorGoatRate Operator share of token rewards (bps).
     function distributeReward(
         address funderPayee,
         address foundation,
@@ -189,6 +211,8 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
         }
     }
 
+    /// @notice Sends the accumulated foundation commissions to a wallet.
+    /// @param to Destination wallet for both native and token commissions.
     function withdrawFoundationCommission(
         address to
     ) external override onlyOwner nonReentrant {
@@ -219,6 +243,8 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
         }
     }
 
+    /// @notice Sends the accumulated operator commissions to a wallet.
+    /// @param to Destination wallet for both native and token commissions.
     function withdrawOperatorCommission(
         address to
     ) external override onlyOwner nonReentrant {
@@ -249,6 +275,11 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
         }
     }
 
+    /// @notice Returns the current operator allowance settings.
+    /// @return nativeAllowance Cap for native commissions within a period.
+    /// @return tokenAllowance Cap for token commissions within a period.
+    /// @return updatePeriod Duration of each allowance period.
+    /// @return nextResetTimestamp Timestamp when allowances reset next.
     function getOperatorAllowanceConfig()
         external
         view
@@ -267,6 +298,10 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
         );
     }
 
+    /// @notice Updates allowance caps and emits the resulting schedule.
+    /// @param nativeAllowance Cap for native commissions per period.
+    /// @param tokenAllowance Cap for token commissions per period.
+    /// @param updatePeriod Duration of each allowance period.
     function setOperatorAllowanceConfig(
         uint256 nativeAllowance,
         uint256 tokenAllowance,
@@ -286,6 +321,7 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
         );
     }
 
+    /// @dev Resets operator allowance tracking if the period elapsed.
     function _refreshOperatorAllowance() internal {
         uint256 period = allowanceUpdatePeriod;
         uint256 nextReset = allowanceClearTimestamp;
@@ -300,6 +336,10 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
         allowanceClearTimestamp = nextReset + (intervals * period);
     }
 
+    /// @dev Applies new allowance parameters and resets usage counters.
+    /// @param nativeAllowance Cap for native commissions.
+    /// @param tokenAllowance Cap for token commissions.
+    /// @param updatePeriod Duration of allowance windows.
     function _setOperatorAllowanceConfig(
         uint256 nativeAllowance,
         uint256 tokenAllowance,
@@ -315,6 +355,10 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
             : block.timestamp + updatePeriod;
     }
 
+    /// @dev Clamps operator commission amounts to the configured allowance.
+    /// @param amount Requested commission amount.
+    /// @param isNative True if the commission is native currency.
+    /// @return permitted The portion allowed under the cap.
     function _applyOperatorAllowance(
         uint256 amount,
         bool isNative
