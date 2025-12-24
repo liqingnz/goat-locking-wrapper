@@ -148,8 +148,7 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
 
             uint256 payout = nativeAvailable - totalCommission;
             if (payout > 0) {
-                (bool success, ) = funderPayee.call{value: payout}("");
-                require(success, "Reward transfer failed");
+                funderPayee.call{value: payout}("");
             }
 
             emit RewardDistributed(
