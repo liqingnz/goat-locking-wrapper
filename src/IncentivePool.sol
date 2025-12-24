@@ -134,17 +134,13 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
             if (foundationShare > 0) {
                 foundationNativeCommission += foundationShare;
                 totalNativeCommission += foundationShare;
-                emit CommissionAccrued(foundation, address(0), foundationShare);
             }
+            emit CommissionAccrued(foundation, address(0), foundationShare);
             if (operatorShare > 0) {
                 operatorNativeCommission += operatorShare;
                 totalNativeCommission += operatorShare;
-                emit CommissionAccrued(
-                    operatorPayee,
-                    address(0),
-                    operatorShare
-                );
             }
+            emit CommissionAccrued(operatorPayee, address(0), operatorShare);
 
             uint256 payout = nativeAvailable - totalCommission;
             if (payout > 0) {
@@ -177,21 +173,21 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
             if (foundationTokenShare > 0) {
                 foundationTokenCommission += foundationTokenShare;
                 totalTokenCommission += foundationTokenShare;
-                emit CommissionAccrued(
-                    foundation,
-                    address(rewardToken),
-                    foundationTokenShare
-                );
             }
+            emit CommissionAccrued(
+                foundation,
+                address(rewardToken),
+                foundationTokenShare
+            );
             if (operatorTokenShare > 0) {
                 operatorTokenCommission += operatorTokenShare;
                 totalTokenCommission += operatorTokenShare;
-                emit CommissionAccrued(
-                    operatorPayee,
-                    address(rewardToken),
-                    operatorTokenShare
-                );
             }
+            emit CommissionAccrued(
+                operatorPayee,
+                address(rewardToken),
+                operatorTokenShare
+            );
 
             uint256 tokenPayout = tokenAvailable - totalTokensCommission;
             if (tokenPayout > 0) {
