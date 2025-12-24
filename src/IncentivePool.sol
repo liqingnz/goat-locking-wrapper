@@ -106,7 +106,7 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
         uint256 foundationGoatRate,
         uint256 operatorNativeRate,
         uint256 operatorGoatRate
-    ) external override onlyOwner {
+    ) external override onlyOwner nonReentrant {
         require(funderPayee != address(0), "Invalid funder payee");
         require(foundation != address(0), "Invalid foundation");
         require(operatorPayee != address(0), "Invalid operator payee");
