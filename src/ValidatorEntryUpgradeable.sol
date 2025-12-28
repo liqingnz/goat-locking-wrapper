@@ -113,20 +113,7 @@ contract ValidatorEntryUpgradeable is
     /// @param newFoundation Replacement foundation address.
     function setFoundation(address newFoundation) external onlyOwner {
         require(newFoundation != address(0), "Invalid foundation address");
-        address oldFoundation = foundation;
-        require(oldFoundation != newFoundation, "Foundation unchanged");
-
-        if (oldFoundation != address(0)) {
-            for (uint256 i; i < validatorList.length; i++) {
-                address validator = validatorList[i];
-                address payable pool = validators[validator].incentivePool;
-                if (pool != address(0)) {
-                    IncentivePool(pool).withdrawFoundationCommission(
-                        oldFoundation
-                    );
-                }
-            }
-        }
+        require(foundation != newFoundation, "Foundation unchanged");
 
         foundation = newFoundation;
         emit FoundationUpdated(newFoundation);
@@ -264,24 +251,8 @@ contract ValidatorEntryUpgradeable is
         require(info.active, "Not migrated");
         require(msg.sender == info.funder, "Not the funder");
 
-        IncentivePool(info.incentivePool).distributeReward(
-            info.funderPayee,
-            foundation,
-            info.operator,
-            foundationNativeCommissionRate,
-            foundationGoatCommissionRate,
-            operatorNativeCommissionRate,
-            operatorGoatCommissionRate
-        );
         // distribute unclaimed rewards to the destination address
         underlying.claim(validator, to);
-
-        IncentivePool(info.incentivePool).withdrawFoundationCommission(
-            foundation
-        );
-        IncentivePool(info.incentivePool).withdrawOperatorCommission(
-            info.operator
-        );
         underlying.changeValidatorOwner(validator, newOwner);
         _removeValidator(validator, info.index);
         info.active = false;
@@ -310,9 +281,6 @@ contract ValidatorEntryUpgradeable is
         require(operator != address(0), "Invalid operator address");
         require(info.operator != operator, "Operator unchanged");
 
-        IncentivePool(info.incentivePool).withdrawOperatorCommission(
-            info.operator
-        );
         info.operator = operator;
 
         emit ValidatorOperatorUpdated(validator, operator);
