@@ -99,9 +99,9 @@ contract ValidatorEntryUpgradeableTest is Test {
         vm.prank(FUNDER);
         entry.migrate(
             VALIDATOR,
-            OPERATOR,
-            FUNDER_PAYEE,
             FUNDER,
+            FUNDER_PAYEE,
+            OPERATOR,
             nativeAllowance,
             tokenAllowance,
             0

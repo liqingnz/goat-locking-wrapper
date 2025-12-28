@@ -47,6 +47,8 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
         address indexed payee,
         address indexed token,
         uint256 reward,
+        uint256 foundationCommission,
+        uint256 operatorCommission,
         uint256 totalCommission
     );
 
@@ -151,6 +153,8 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
                 funderPayee,
                 address(0),
                 payout,
+                foundationShare,
+                operatorShare,
                 totalCommission
             );
         }
@@ -201,6 +205,8 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
                 funderPayee,
                 address(rewardToken),
                 tokenPayout,
+                foundationTokenShare,
+                operatorTokenShare,
                 totalTokensCommission
             );
         }
@@ -305,13 +311,6 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
             tokenAllowance,
             updatePeriod
         );
-
-        emit OperatorAllowanceConfigured(
-            nativeAllowance,
-            tokenAllowance,
-            updatePeriod,
-            allowanceClearTimestamp
-        );
     }
 
     /// @dev Resets operator allowance tracking if the period elapsed.
@@ -319,7 +318,7 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
         uint256 period = allowanceUpdatePeriod;
         uint256 nextReset = allowanceClearTimestamp;
 
-        if (period == 0 || nextReset == 0 || block.timestamp < nextReset) {
+        if (period == 0 || block.timestamp < nextReset) {
             return;
         }
 
@@ -346,6 +345,13 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
         allowanceClearTimestamp = updatePeriod == 0
             ? block.timestamp
             : block.timestamp + updatePeriod;
+
+        emit OperatorAllowanceConfigured(
+            nativeAllowance,
+            tokenAllowance,
+            updatePeriod,
+            allowanceClearTimestamp
+        );
     }
 
     /// @dev Clamps operator commission amounts to the configured allowance.
