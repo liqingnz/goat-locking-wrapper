@@ -80,33 +80,33 @@ contract ValidatorEntryUpgradeable is
     }
 
     /// @notice Initializes the upgradeable storage.
-    /// @param _underlying Goat locking contract that owns validators.
-    /// @param _rewardToken ERC20 token paid from incentive pools.
-    /// @param _foundation Foundation commission recipient.
+    /// @param underlyingContract Goat locking contract that owns validators.
+    /// @param rewardTokenContract ERC20 token paid from incentive pools.
+    /// @param foundationAddr Foundation commission recipient.
     /// @param initialOwner Owner of the proxy (defaults to caller if zero).
     function initialize(
-        ILocking _underlying,
-        IERC20 _rewardToken,
-        address _foundation,
+        ILocking underlyingContract,
+        IERC20 rewardTokenContract,
+        address foundationAddr,
         address initialOwner
     ) external initializer {
         require(
-            address(_underlying) != address(0),
+            address(underlyingContract) != address(0),
             "Invalid underlying address"
         );
         require(
-            address(_rewardToken) != address(0),
+            address(rewardTokenContract) != address(0),
             "Invalid rewardToken address"
         );
-        require(_foundation != address(0), "Invalid foundation address");
+        require(foundationAddr != address(0), "Invalid foundation address");
 
         __Ownable_init(
             initialOwner == address(0) ? _msgSender() : initialOwner
         );
 
-        underlying = _underlying;
-        rewardToken = _rewardToken;
-        foundation = _foundation;
+        underlying = underlyingContract;
+        rewardToken = rewardTokenContract;
+        foundation = foundationAddr;
     }
 
     /// @notice Updates the foundation payee and withdraws pending commissions.

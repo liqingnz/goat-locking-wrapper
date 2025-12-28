@@ -2,16 +2,19 @@
 pragma solidity ^0.8.28;
 
 import "forge-std/Test.sol";
+import {
+    ERC1967Proxy
+} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-import {ValidatorEntry} from "src/ValidatorEntry.sol";
+import {ValidatorEntryUpgradeable} from "src/ValidatorEntryUpgradeable.sol";
 import {IncentivePool} from "src/IncentivePool.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {MockLocking} from "test/mocks/MockLocking.sol";
 
-contract ValidatorEntryTest is Test {
+contract ValidatorEntryUpgradeableTest is Test {
     MockLocking private locking;
     MockERC20 private token;
-    ValidatorEntry private entry;
+    ValidatorEntryUpgradeable private entry;
 
     address private constant FOUNDATION = address(0xF2);
     address private constant OPERATOR = address(0xF3);
@@ -22,7 +25,19 @@ contract ValidatorEntryTest is Test {
     function setUp() public {
         locking = new MockLocking();
         token = new MockERC20();
-        entry = new ValidatorEntry(locking, token, FOUNDATION);
+        ValidatorEntryUpgradeable implementation = new ValidatorEntryUpgradeable();
+        bytes memory initData = abi.encodeWithSelector(
+            ValidatorEntryUpgradeable.initialize.selector,
+            locking,
+            token,
+            FOUNDATION,
+            address(this)
+        );
+        ERC1967Proxy proxy = new ERC1967Proxy(
+            address(implementation),
+            initData
+        );
+        entry = ValidatorEntryUpgradeable(payable(address(proxy)));
 
         entry.setCommissionRates(2_000, 3_000, 5_000, 4_000);
         locking.setOwner(VALIDATOR, address(entry));
