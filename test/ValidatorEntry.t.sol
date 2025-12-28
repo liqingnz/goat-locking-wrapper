@@ -5,11 +5,19 @@ import "forge-std/Test.sol";
 import {
     ERC1967Proxy
 } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-
+import {
+    OwnableUpgradeable
+} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {ValidatorEntryUpgradeable} from "src/ValidatorEntryUpgradeable.sol";
 import {IncentivePool} from "src/IncentivePool.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {MockLocking} from "test/mocks/MockLocking.sol";
+
+contract ValidatorEntryUpgradeableV2 is ValidatorEntryUpgradeable {
+    function version() external pure returns (string memory) {
+        return "v2";
+    }
+}
 
 contract ValidatorEntryUpgradeableTest is Test {
     MockLocking private locking;
@@ -41,6 +49,22 @@ contract ValidatorEntryUpgradeableTest is Test {
 
         entry.setCommissionRates(2_000, 3_000, 5_000, 4_000);
         locking.setOwner(VALIDATOR, FUNDER);
+    }
+
+    function testUpgradeToNewImplementation() public {
+        ValidatorEntryUpgradeableV2 newImpl = new ValidatorEntryUpgradeableV2();
+        address nonOwner = address(0xB0B);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                OwnableUpgradeable.OwnableUnauthorizedAccount.selector,
+                nonOwner
+            )
+        );
+        vm.prank(nonOwner);
+        entry.upgradeToAndCall(address(newImpl), "");
+        vm.prank(address(this));
+        entry.upgradeToAndCall(address(newImpl), "");
+        assertEq(ValidatorEntryUpgradeableV2(address(entry)).version(), "v2");
     }
 
     function testDistributeRewardViaValidatorEntry() public {
