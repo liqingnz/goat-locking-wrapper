@@ -17,12 +17,11 @@ import {IncentivePool} from "./IncentivePool.sol";
 contract ValidatorEntry is Ownable {
     uint256 public constant MAX_COMMISSION_RATE = 10000; // 100%
     uint256 public constant MAX_VALIDATOR_COUNT = 200;
+    uint32 public constant MIGRATION_WINDOW = 1 days;
 
     // the underlying staking contract address
     ILocking public immutable underlying;
     IERC20 public immutable rewardToken;
-
-    mapping(address validator => ValidatorInfo info) public validators;
 
     event ValidatorMigrated(
         address validator,
@@ -42,14 +41,18 @@ contract ValidatorEntry is Ownable {
 
     event ValidatorFunderPayeeUpdated(address validator, address funderPayee);
     event ValidatorOperatorUpdated(address validator, address operator);
+    event MigrationRegistered(address validator, address owner);
 
     struct ValidatorInfo {
-        address payable incentivePool; // the incentive pool address for receiving rewards
-        address funderPayee; // the address who receives the rewards in the incentive pool
+        uint32 migrateDeadline; // the deadline for the migration to complete
         address funder; // the address who funded the validator locking
+        address funderPayee; // the address who receives the rewards in the incentive pool
         address operator; // the address who operates the validator and receives commissions
-        uint256 index; // position in validator list
+        address payable incentivePool; // the incentive pool address for receiving rewards
+        uint32 index; // position in validator list
     }
+
+    mapping(address validator => ValidatorInfo info) public validators;
 
     address public foundation;
     uint256 public foundationNativeCommissionRate;
@@ -155,6 +158,17 @@ contract ValidatorEntry is Ownable {
         );
     }
 
+    /// @notice Registers a migration for a validator.
+    /// @param validator Validator being migrated.
+    function registerMigration(address validator) external {
+        ValidatorInfo storage info = validators[validator];
+        require(address(info.incentivePool) == address(0), "Already migrated");
+        require(block.timestamp > info.migrateDeadline, "Ongoing migration");
+        info.migrateDeadline = uint32(block.timestamp + MIGRATION_WINDOW);
+        info.funder = msg.sender;
+        emit MigrationRegistered(validator, msg.sender);
+    }
+
     /// @notice Deploys an incentive pool and tracks metadata for a validator.
     /// @dev Must be coordinated with `underlying.changeValidatorOwner`.
     /// @param validator Validator address being migrated.
@@ -173,11 +187,10 @@ contract ValidatorEntry is Ownable {
         uint256 operatorTokenAllowance,
         uint256 allowanceUpdatePeriod
     ) external {
+        ValidatorInfo storage info = validators[validator];
+        require(block.timestamp <= info.migrateDeadline, "Migration expired");
         require(address(this) == underlying.owners(validator), "Not the owner");
-        require(
-            address(validators[validator].incentivePool) == address(0),
-            "Already migrated"
-        );
+        require(msg.sender == info.funder, "Not registered");
         require(foundation != address(0), "Foundation not set");
         require(operator != address(0), "Invalid operator payee");
         require(funderPayee != address(0), "Invalid funder payee address");
@@ -197,11 +210,12 @@ contract ValidatorEntry is Ownable {
             )
         );
         validators[validator] = ValidatorInfo({
-            incentivePool: pool,
-            funderPayee: funderPayee,
+            migrateDeadline: 0,
             funder: funder,
+            funderPayee: funderPayee,
             operator: operator,
-            index: validatorList.length
+            incentivePool: pool,
+            index: uint32(validatorList.length)
         });
         validatorList.push(validator);
         emit ValidatorMigrated(
@@ -420,7 +434,7 @@ contract ValidatorEntry is Ownable {
         if (index != lastIndex) {
             address lastValidator = validatorList[lastIndex];
             validatorList[index] = lastValidator;
-            validators[lastValidator].index = index;
+            validators[lastValidator].index = uint32(index);
         }
         validatorList.pop();
     }

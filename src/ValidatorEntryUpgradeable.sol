@@ -30,6 +30,7 @@ contract ValidatorEntryUpgradeable is
 {
     uint256 public constant MAX_COMMISSION_RATE = 10000; // 100%
     uint256 public constant MAX_VALIDATOR_COUNT = 200;
+    uint32 public constant MIGRATION_WINDOW = 1 days;
 
     ILocking public underlying;
     IERC20 public rewardToken;
@@ -54,13 +55,15 @@ contract ValidatorEntryUpgradeable is
 
     event ValidatorFunderPayeeUpdated(address validator, address funderPayee);
     event ValidatorOperatorUpdated(address validator, address operator);
+    event MigrationRegistered(address validator, address owner);
 
     struct ValidatorInfo {
-        address payable incentivePool;
-        address funderPayee;
+        uint32 migrateDeadline;
         address funder;
+        address funderPayee;
         address operator;
-        uint256 index;
+        address payable incentivePool;
+        uint32 index;
     }
 
     address public foundation;
@@ -179,6 +182,17 @@ contract ValidatorEntryUpgradeable is
         );
     }
 
+    /// @notice Registers a migration intent for a validator.
+    /// @param validator Validator being migrated.
+    function registerMigration(address validator) external {
+        ValidatorInfo storage info = validators[validator];
+        require(address(info.incentivePool) == address(0), "Already migrated");
+        require(block.timestamp > info.migrateDeadline, "Ongoing migration");
+        info.migrateDeadline = uint32(block.timestamp + MIGRATION_WINDOW);
+        info.funder = msg.sender;
+        emit MigrationRegistered(validator, msg.sender);
+    }
+
     /// @notice Deploys a dedicated incentive pool for the validator.
     /// @param validator Validator address being migrated.
     /// @param operator Operator receiving commissions.
@@ -196,11 +210,11 @@ contract ValidatorEntryUpgradeable is
         uint256 operatorTokenAllowance,
         uint256 allowanceUpdatePeriod
     ) external {
+        ValidatorInfo storage info = validators[validator];
+        require(block.timestamp <= info.migrateDeadline, "Migration expired");
         require(address(this) == underlying.owners(validator), "Not the owner");
-        require(
-            address(validators[validator].incentivePool) == address(0),
-            "Already migrated"
-        );
+        require(msg.sender == info.funder, "Not registered");
+        require(address(info.incentivePool) == address(0), "Already migrated");
         require(foundation != address(0), "Foundation not set");
         require(operator != address(0), "Invalid operator payee");
         require(funderPayee != address(0), "Invalid funder payee address");
@@ -221,11 +235,12 @@ contract ValidatorEntryUpgradeable is
             )
         );
         validators[validator] = ValidatorInfo({
-            incentivePool: pool,
-            funderPayee: funderPayee,
+            migrateDeadline: 0,
             funder: funder,
+            funderPayee: funderPayee,
             operator: operator,
-            index: validatorList.length
+            incentivePool: pool,
+            index: uint32(validatorList.length)
         });
 
         validatorList.push(validator);
@@ -261,7 +276,6 @@ contract ValidatorEntryUpgradeable is
         IncentivePool(info.incentivePool).withdrawOperatorCommission(
             info.operator
         );
-
         underlying.changeValidatorOwner(validator, newOwner);
         _removeValidator(validator, info.index);
         delete validators[validator];
@@ -455,7 +469,7 @@ contract ValidatorEntryUpgradeable is
         if (index != lastIndex) {
             address lastValidator = validatorList[lastIndex];
             validatorList[index] = lastValidator;
-            validators[lastValidator].index = index;
+            validators[lastValidator].index = uint32(index);
         }
 
         validatorList.pop();

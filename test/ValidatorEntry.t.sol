@@ -77,6 +77,9 @@ contract ValidatorEntryTest is Test {
         uint256 nativeAllowance,
         uint256 tokenAllowance
     ) internal returns (address payable poolAddr) {
+        vm.prank(FUNDER);
+        entry.registerMigration(VALIDATOR);
+        vm.prank(FUNDER);
         entry.migrate(
             VALIDATOR,
             OPERATOR,
@@ -86,7 +89,9 @@ contract ValidatorEntryTest is Test {
             tokenAllowance,
             0
         );
-        (poolAddr, , , , ) = entry.validators(VALIDATOR);
+        uint32 index_;
+        (, , , , poolAddr, index_) = entry.validators(VALIDATOR);
+        index_;
     }
 
     function _fundPool(
