@@ -58,7 +58,7 @@ contract ValidatorEntryUpgradeable is
     event MigrationRegistered(address validator, address owner);
 
     struct ValidatorInfo {
-        uint32 migrateDeadline;
+        bool active;
         address funder;
         address funderPayee;
         address operator;
@@ -186,9 +186,8 @@ contract ValidatorEntryUpgradeable is
     /// @param validator Validator being migrated.
     function registerMigration(address validator) external {
         ValidatorInfo storage info = validators[validator];
-        require(address(info.incentivePool) == address(0), "Already migrated");
-        require(block.timestamp > info.migrateDeadline, "Ongoing migration");
-        info.migrateDeadline = uint32(block.timestamp + MIGRATION_WINDOW);
+        require(!info.active, "Already migrated");
+        require(msg.sender == underlying.owners(validator), "Not the owner");
         info.funder = msg.sender;
         emit MigrationRegistered(validator, msg.sender);
     }
@@ -211,10 +210,9 @@ contract ValidatorEntryUpgradeable is
         uint256 allowanceUpdatePeriod
     ) external {
         ValidatorInfo storage info = validators[validator];
-        require(block.timestamp <= info.migrateDeadline, "Migration expired");
+        require(!info.active, "Already migrated");
         require(address(this) == underlying.owners(validator), "Not the owner");
         require(msg.sender == info.funder, "Not registered");
-        require(address(info.incentivePool) == address(0), "Already migrated");
         require(foundation != address(0), "Foundation not set");
         require(operator != address(0), "Invalid operator payee");
         require(funderPayee != address(0), "Invalid funder payee address");
@@ -235,7 +233,7 @@ contract ValidatorEntryUpgradeable is
             )
         );
         validators[validator] = ValidatorInfo({
-            migrateDeadline: 0,
+            active: true,
             funder: funder,
             funderPayee: funderPayee,
             operator: operator,
@@ -263,6 +261,7 @@ contract ValidatorEntryUpgradeable is
         address to
     ) external {
         ValidatorInfo storage info = validators[validator];
+        require(info.active, "Not migrated");
         require(msg.sender == info.funder, "Not the funder");
 
         IncentivePool(info.incentivePool).distributeReward(
@@ -285,7 +284,7 @@ contract ValidatorEntryUpgradeable is
         );
         underlying.changeValidatorOwner(validator, newOwner);
         _removeValidator(validator, info.index);
-        delete validators[validator];
+        info.active = false;
     }
 
     /// @notice Updates the funder payee address.
@@ -486,5 +485,5 @@ contract ValidatorEntryUpgradeable is
         address newImplementation
     ) internal override onlyOwner {}
 
-    uint256[49] private __gap;
+    uint256[50] private __gap;
 }

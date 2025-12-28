@@ -40,7 +40,7 @@ contract ValidatorEntryUpgradeableTest is Test {
         entry = ValidatorEntryUpgradeable(payable(address(proxy)));
 
         entry.setCommissionRates(2_000, 3_000, 5_000, 4_000);
-        locking.setOwner(VALIDATOR, address(entry));
+        locking.setOwner(VALIDATOR, FUNDER);
     }
 
     function testDistributeRewardViaValidatorEntry() public {
@@ -95,6 +95,8 @@ contract ValidatorEntryUpgradeableTest is Test {
         vm.prank(FUNDER);
         entry.registerMigration(VALIDATOR);
         vm.prank(FUNDER);
+        locking.changeValidatorOwner(VALIDATOR, address(entry));
+        vm.prank(FUNDER);
         entry.migrate(
             VALIDATOR,
             OPERATOR,
@@ -104,9 +106,19 @@ contract ValidatorEntryUpgradeableTest is Test {
             tokenAllowance,
             0
         );
+        bool isActive;
         uint32 index_;
-        (, , , , poolAddr, index_) = entry.validators(VALIDATOR);
-        index_;
+        (isActive, , , , poolAddr, index_) = entry.validators(VALIDATOR);
+        assertTrue(isActive);
+    }
+
+    function testRegisterMigrationRevertsWhileActive() public {
+        _migrateDefault(10 ether, 1_000 ether);
+        vm.prank(address(entry));
+        locking.changeValidatorOwner(VALIDATOR, FUNDER);
+        vm.expectRevert("Already migrated");
+        vm.prank(FUNDER);
+        entry.registerMigration(VALIDATOR);
     }
 
     function _fundPool(
