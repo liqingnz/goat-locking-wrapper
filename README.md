@@ -99,41 +99,42 @@ Replace the existing `locking` calls with the delegate equivalents:
 2. `locking.unlock(validator, _recipient, _locking);` → `lockingDelegate.undelegate(validator, _recipient, _locking);`
 3. `locking.claim(validator, distributor);` → `lockingDelegate.claimRewards(validator);`
 
-### Administrative helpers
+### Example helper functions
 
-Add helper functions so an admin can configure the delegate and validator owner:
+Here is a minimal example showing how a pool contract might wire the delegate and perform the migration sequence:
 
 ```solidity
 function setLockingDelegate(
-    address _lockingDelegate
-) public onlyRole(Constants.ADMIN_ROLE) {
-    require(
-        _lockingDelegate != address(0),
-        "SequencerPool: INVALID_LOCKING_DELEGATE"
-    );
-    lockingDelegate = ILockingDelegate(_lockingDelegate);
-    emit LockingDelegateSet(_lockingDelegate);
+    address lockingDelegateAddr
+) public {
+    lockingDelegate = ILockingDelegate(lockingDelegateAddr);
 }
 
-function changeValidatorOwner(
-    address _validatorOwner
-) public onlyRole(Constants.ADMIN_ROLE) {
-    require(validator != address(0), "SequencerPool: NO_VALIDATOR");
-    require(
-        _validatorOwner != address(0),
-        "SequencerPool: INVALID_VALIDATOR_OWNER"
+function migrateValidator(
+    uint256 operatorNativeAllowance,
+    uint256 operatorTokenAllowance,
+    uint256 allowanceUpdatePeriod
+) public {
+    lockingDelegate.registerMigration(validator);
+    locking.changeValidatorOwner(validator, address(lockingDelegate));
+    lockingDelegate.migrate(
+        validator,
+        operator,
+        distributor,
+        address(this),
+        operatorNativeAllowance,
+        operatorTokenAllowance,
+        allowanceUpdatePeriod
     );
-    locking.changeValidatorOwner(validator, _validatorOwner);
 }
 ```
 
 ## Migration Steps
 
 1. Call `setLockingDelegate(<DELEGATE_CONTRACT_ADDRESS>)` on the SequencerPool.
-2. Call `changeValidatorOwner(<DELEGATE_CONTRACT_ADDRESS>)` on the SequencerPool.
-3. Call `migrate(<VALIDATOR_ADDRESS>, <OPERATOR_ADDRESS>, <DISTRIBUTOR_CONTRACT_ADDRESS>, <SEQUENCER_POOL_ADDRESS>, <OPERATOR_NATIVE_ALLOWANCE>, <OPERATOR_GOAT_ALLOWANCE>, <ALLOWANCE_UPDATE_PERIOD)` on the delegate contract.
-
-> Execute steps 2 and 3 in the same transaction to avoid front-running.
+2. While the SequencerPool still owns the validator, call `registerMigration(<VALIDATOR_ADDRESS>)` on the delegate contract. This pins the SequencerPool as the `funder` that is allowed to finalize the migration.
+3. Call `changeValidatorOwner(<DELEGATE_CONTRACT_ADDRESS>)` on the SequencerPool so the delegate temporarily owns the validator.
+4. From the SequencerPool (the recorded funder), call `migrate(<VALIDATOR_ADDRESS>, <SEQUENCER_POOL_ADDRESS>, <DISTRIBUTOR_CONTRACT_ADDRESS>, <OPERATOR_ADDRESS>, <OPERATOR_NATIVE_ALLOWANCE>, <OPERATOR_GOAT_ALLOWANCE>, <ALLOWANCE_UPDATE_PERIOD>)` on the delegate contract.
 
 ## Claiming Rewards
 
