@@ -28,6 +28,7 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
     uint256 public operatorTokenCommission;
     uint256 public totalNativeCommission;
     uint256 public totalTokenCommission;
+    uint256 public funderNativeAccrued;
 
     uint256 public operatorNativeAllowance;
     uint256 public operatorTokenAllowance;
@@ -124,7 +125,9 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
         _refreshOperatorAllowance();
 
         // Handle native currency reward
-        uint256 nativeAvailable = address(this).balance - totalNativeCommission;
+        uint256 nativeAvailable = address(this).balance -
+            totalNativeCommission -
+            funderNativeAccrued;
         if (nativeAvailable > 0) {
             uint256 foundationShare = (nativeAvailable * foundationNativeRate) /
                 MAX_COMMISSION_RATE;
@@ -144,15 +147,20 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
             }
             emit CommissionAccrued(operatorPayee, address(0), operatorShare);
 
-            uint256 payout = nativeAvailable - totalCommission;
-            if (payout > 0) {
-                funderPayee.call{value: payout}("");
+            funderNativeAccrued += nativeAvailable - totalCommission;
+            if (funderNativeAccrued > 0) {
+                (bool success, ) = funderPayee.call{value: funderNativeAccrued}(
+                    ""
+                );
+                if (success) {
+                    funderNativeAccrued = 0;
+                }
             }
 
             emit RewardDistributed(
                 funderPayee,
                 address(0),
-                payout,
+                funderNativeAccrued,
                 foundationShare,
                 operatorShare,
                 totalCommission
