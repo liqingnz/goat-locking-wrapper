@@ -71,6 +71,9 @@ contract ValidatorEntryUpgradeableTest is Test {
         address payable poolAddr = _migrateDefault(10 ether, 1_000 ether);
         _fundPool(poolAddr, 10 ether, 1_000 ether);
 
+        uint256 funderNativeBefore = FUNDER_PAYEE.balance;
+        uint256 funderTokenBefore = token.balanceOf(FUNDER_PAYEE);
+
         entry.withdrawRewards(VALIDATOR);
 
         IncentivePool pool = IncentivePool(poolAddr);
@@ -78,6 +81,8 @@ contract ValidatorEntryUpgradeableTest is Test {
         assertEq(pool.operatorNativeCommission(), 3 ether);
         assertEq(pool.foundationTokenCommission(), 500 ether);
         assertEq(pool.operatorTokenCommission(), 400 ether);
+        assertEq(FUNDER_PAYEE.balance - funderNativeBefore, 5 ether);
+        assertEq(token.balanceOf(FUNDER_PAYEE) - funderTokenBefore, 100 ether);
     }
 
     function testWithdrawsRespectRoles() public {

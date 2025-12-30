@@ -231,7 +231,8 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
         if (nativeAmount > 0) {
             foundationNativeCommission = 0;
             totalNativeCommission -= nativeAmount;
-            to.call{value: nativeAmount}("");
+            (bool success, ) = to.call{value: nativeAmount}("");
+            require(success, "Native commission transfer failed");
             emit FoundationCommissionWithdrawn(to, address(0), nativeAmount);
         }
 
@@ -262,7 +263,8 @@ contract IncentivePool is Ownable, ReentrancyGuard, IIncentivePool {
         if (nativeAmount > 0) {
             operatorNativeCommission = 0;
             totalNativeCommission -= nativeAmount;
-            to.call{value: nativeAmount}("");
+            (bool success, ) = to.call{value: nativeAmount}("");
+            require(success, "Native commission transfer failed");
             emit OperatorCommissionWithdrawn(to, address(0), nativeAmount);
         }
 
