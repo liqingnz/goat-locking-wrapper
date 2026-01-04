@@ -30,7 +30,7 @@ contract ValidatorEntryUpgradeable is
 {
     uint256 public constant MAX_COMMISSION_RATE = 10000; // 100%
     uint256 public constant MAX_VALIDATOR_COUNT = 200;
-    uint32 public constant MIGRATION_WINDOW = 1 days;
+    uint32 public constant MIGRATION_COOLDOWN = 7 days;
 
     ILocking public underlying;
     IERC20 public rewardToken;
@@ -60,11 +60,12 @@ contract ValidatorEntryUpgradeable is
 
     struct ValidatorInfo {
         bool active;
+        uint32 index;
+        uint32 migrationCooldown;
         address funder;
         address funderPayee;
         address operator;
         address payable incentivePool;
-        uint32 index;
     }
 
     address public foundation;
@@ -159,6 +160,10 @@ contract ValidatorEntryUpgradeable is
     function registerMigration(address validator) external {
         ValidatorInfo storage info = validators[validator];
         require(!info.active, "Already migrated");
+        require(
+            block.timestamp >= info.migrationCooldown,
+            "Migration window not expired"
+        );
         require(msg.sender == underlying.owners(validator), "Not the owner");
         info.funder = msg.sender;
         emit MigrationRegistered(validator, msg.sender);
@@ -205,11 +210,12 @@ contract ValidatorEntryUpgradeable is
         );
         validators[validator] = ValidatorInfo({
             active: true,
+            index: uint32(validatorList.length),
+            migrationCooldown: 0,
             funder: funder,
             funderPayee: funderPayee,
             operator: operator,
-            incentivePool: pool,
-            index: uint32(validatorList.length)
+            incentivePool: pool
         });
 
         validatorList.push(validator);
@@ -236,11 +242,13 @@ contract ValidatorEntryUpgradeable is
         require(info.active, "Not migrated");
         require(msg.sender == info.funder, "Not the funder");
 
+        _distributeReward(info);
         // distribute unclaimed rewards to the destination address
         underlying.claim(validator, to);
         underlying.changeValidatorOwner(validator, newOwner);
         _removeValidator(validator, info.index);
         info.active = false;
+        info.migrationCooldown = uint32(block.timestamp + MIGRATION_COOLDOWN);
     }
 
     /// @notice Updates the funder payee address.

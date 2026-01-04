@@ -137,7 +137,7 @@ contract ValidatorEntryUpgradeableTest is Test {
         );
         bool isActive;
         uint32 index_;
-        (isActive, , , , poolAddr, index_) = entry.validators(VALIDATOR);
+        (isActive, index_, , , , , poolAddr) = entry.validators(VALIDATOR);
         assertTrue(isActive);
     }
 
