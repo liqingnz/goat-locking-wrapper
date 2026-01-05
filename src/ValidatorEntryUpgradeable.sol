@@ -245,19 +245,13 @@ contract ValidatorEntryUpgradeable is
     /// @notice Removes a validator and hands ownership to a new contract and cleanup the incentive pool.
     /// @param validator Validator being migrated away.
     /// @param newOwner Target contract that should become validator owner.
-    /// @param to Destination address to receive unclaimed rewards.
-    function migrateTo(
-        address validator,
-        address newOwner,
-        address to
-    ) external {
+    function migrateTo(address validator, address newOwner) external {
         ValidatorInfo storage info = validators[validator];
         require(info.active, "Not migrated");
         require(msg.sender == info.funder, "Not the funder");
 
         _distributeReward(info);
-        // distribute unclaimed rewards to the destination address
-        underlying.claim(validator, to);
+        underlying.claim(validator, info.incentivePool);
         underlying.changeValidatorOwner(validator, newOwner);
         _removeValidator(validator, info.index);
         info.active = false;
