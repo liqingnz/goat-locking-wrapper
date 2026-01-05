@@ -113,10 +113,23 @@ contract ValidatorEntryUpgradeable is
 
     /// @notice Updates the foundation payee.
     /// @param newFoundation Replacement foundation address.
-    function setFoundation(address newFoundation) external onlyOwner {
+    /// @param to Destination wallet.
+    function setFoundation(
+        address newFoundation,
+        address to
+    ) external onlyOwner {
         require(newFoundation != address(0), "Invalid foundation address");
         require(foundation != newFoundation, "Foundation unchanged");
 
+        if (to != address(0)) {
+            for (uint256 i; i < validatorList.length; i++) {
+                address payable pool = validators[validatorList[i]]
+                    .incentivePool;
+                if (pool != address(0)) {
+                    IncentivePool(pool).withdrawFoundationCommission(to);
+                }
+            }
+        }
         foundation = newFoundation;
         emit FoundationUpdated(newFoundation);
     }
@@ -267,13 +280,20 @@ contract ValidatorEntryUpgradeable is
     /// @notice Rotates the validator operator.
     /// @param validator Target validator.
     /// @param operator New operator payee.
-    function setOperator(address validator, address operator) external {
+    /// @param to Destination wallet.
+    function setOperator(
+        address validator,
+        address operator,
+        address to
+    ) external {
         ValidatorInfo storage info = validators[validator];
         require(info.incentivePool != address(0), "Not migrated");
         require(msg.sender == info.operator, "Not operator");
         require(operator != address(0), "Invalid operator address");
         require(info.operator != operator, "Operator unchanged");
-
+        if (to != address(0)) {
+            IncentivePool(info.incentivePool).withdrawOperatorCommission(to);
+        }
         info.operator = operator;
 
         emit ValidatorOperatorUpdated(validator, operator);
