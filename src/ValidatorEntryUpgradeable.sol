@@ -173,10 +173,6 @@ contract ValidatorEntryUpgradeable is
     function registerMigration(address validator) external {
         ValidatorInfo storage info = validators[validator];
         require(!info.active, "Already migrated");
-        require(
-            block.timestamp >= info.migrationCooldown,
-            "Migration window not expired"
-        );
         require(msg.sender == underlying.owners(validator), "Not the owner");
         info.funder = msg.sender;
         emit MigrationRegistered(validator, msg.sender);
@@ -203,6 +199,10 @@ contract ValidatorEntryUpgradeable is
         require(!info.active, "Already migrated");
         require(address(this) == underlying.owners(validator), "Not the owner");
         require(msg.sender == info.funder, "Not registered");
+        require(
+            block.timestamp >= info.migrationCooldown,
+            "Migration window not expired"
+        );
         require(operator != address(0), "Invalid operator payee");
         require(funderPayee != address(0), "Invalid funder payee address");
         require(funder != address(0), "Invalid funder address");
