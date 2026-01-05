@@ -30,6 +30,7 @@ contract ValidatorEntryUpgradeable is
 {
     uint256 public constant MAX_COMMISSION_RATE = 10000; // 100%
     uint256 public constant MAX_VALIDATOR_COUNT = 200;
+    /// @notice The cooldown period after a validator is migrated before it can be migrated again.
     uint32 public constant MIGRATION_COOLDOWN = 7 days;
 
     ILocking public underlying;
